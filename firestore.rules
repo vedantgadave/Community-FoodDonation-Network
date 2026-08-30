@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isNotBlocked() {
+      return isAuthenticated() && 
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
+         getUserData().isBlocked != true);
+    }
+
+    function hasRole(role) {
+      return isNotBlocked() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return isNotBlocked() && getUserData().role == 'ADMIN';
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow read for authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow user creation on self-registration
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Allow users to update their own non-sensitive profile info, or admin full control
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isBlocked'])) ||
+        isAdmin()
+      );
+      
+      // Only admin can delete user profiles
+      allow delete: if isAdmin();
+    }
+
+    // Donations Collection
+    match /donations/{donationId} {
+      // Anyone logged in can read donations
+      allow read: if isAuthenticated();
+
+      // Only Donors can create donations
+      allow create: if hasRole('DONOR') && 
+        request.resource.data.donorId == request.auth.uid &&
+        request.resource.data.status == 'AVAILABLE';
+
+      // Updates strictly bound by State Machine & Role Authorization
+      allow update: if isAuthenticated() && isNotBlocked() && (
+        // 1. Admin overrides
+        isAdmin() ||
+
+        // 2. NGO Atomic Acceptance: AVAILABLE -> ACCEPTED
+        (
+          hasRole('NGO') &&
+          resource.data.status == 'AVAILABLE' &&
+          request.resource.data.status == 'ACCEPTED' &&
+          request.resource.data.acceptedBy == request.auth.uid &&
+          request.resource.data.donorId == resource.data.donorId &&
+          request.resource.data.foodName == resource.data.foodName
+        ) ||
+
+        // 3. Assigned NGO Pick Up: ACCEPTED -> PICKED_UP
+        (
+          hasRole('NGO') &&
+          resource.data.status == 'ACCEPTED' &&
+          resource.data.acceptedBy == request.auth.uid &&
+          request.resource.data.status == 'PICKED_UP'
+        ) ||
+
+        // 4. Assigned NGO Complete: PICKED_UP -> COMPLETED
+        (
+          hasRole('NGO') &&
+          resource.data.status == 'PICKED_UP' &&
+          resource.data.acceptedBy == request.auth.uid &&
+          request.resource.data.status == 'COMPLETED'
+        ) ||
+
+        // 5. Donor Cancellation: AVAILABLE -> CANCELLED
+        (
+          hasRole('DONOR') &&
+          resource.data.donorId == request.auth.uid &&
+          resource.data.status == 'AVAILABLE' &&
+          request.resource.data.status == 'CANCELLED'
+        )
+      );
+
+      // Only admin can delete donations
+      allow delete: if isAdmin();
+    }
+  }
+}
