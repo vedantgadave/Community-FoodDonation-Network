@@ -1,5 +1,5 @@
 import React from 'react';
-import { DonationStatus } from '../../types';
+import type { DonationStatus } from '../../types';
 import { DONATION_STATUSES } from '../../constants';
 
 interface StatusBadgeProps {

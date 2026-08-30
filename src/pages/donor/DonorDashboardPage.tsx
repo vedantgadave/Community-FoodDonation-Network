@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Donation } from '../../types';
+import type { Donation } from '../../types';
 import { getDonationsByDonor } from '../../services/donationService';
 import { DonationCard } from '../../components/donation/DonationCard';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Package, CheckCircle2, Clock, Truck, XCircle, HeartHandshake } from 'lucide-react';
+import { PlusCircle, Package, CheckCircle2, Clock, Truck, HeartHandshake } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 export const DonorDashboardPage: React.FC = () => {

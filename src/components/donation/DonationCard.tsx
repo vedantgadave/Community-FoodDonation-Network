@@ -1,8 +1,8 @@
 import React from 'react';
-import { Donation, UserProfile } from '../../types';
+import type { Donation, UserProfile } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { Button } from '../ui/Button';
-import { MapPin, Clock, UtensilsCrossed, Calendar, Building, Eye } from 'lucide-react';
+import { MapPin, Clock, UtensilsCrossed, Building, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DonationCardProps {

@@ -2,8 +2,8 @@ import { isDemoMode } from './firebase';
 
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
 
-const CLOUD_NAME = env.VITE_CLOUDINARY_CLOUD_NAME || '';
-const UPLOAD_PRESET = env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
+const CLOUD_NAME = env.VITE_CLOUDINARY_CLOUD_NAME || 'food-donation2-0';
+const UPLOAD_PRESET = env.VITE_CLOUDINARY_UPLOAD_PRESET || 'community_food_uploads';
 
 export const isCloudinaryConfigured = Boolean(
   CLOUD_NAME && 
@@ -17,7 +17,7 @@ export interface UploadResult {
 }
 
 /**
- * Client-side unsigned image upload to Cloudinary.
+ * Client-side unsigned image upload to Cloudinary using preset 'community_food_uploads'.
  * Enforces file size limit (< 5MB) and allowed image MIME types.
  */
 export async function uploadImageToCloudinary(
@@ -35,8 +35,8 @@ export async function uploadImageToCloudinary(
     throw new Error('Invalid file format. Only JPG, PNG, and WEBP images are allowed.');
   }
 
-  // If in demo mode or credentials not set, provide simulated upload preview
-  if (isDemoMode || !isCloudinaryConfigured) {
+  // If in demo mode, provide simulated upload preview
+  if (isDemoMode) {
     return new Promise((resolve) => {
       let progress = 0;
       const interval = setInterval(() => {
@@ -44,7 +44,6 @@ export async function uploadImageToCloudinary(
         if (onProgress) onProgress(progress);
         if (progress >= 100) {
           clearInterval(interval);
-          // Create local object URL for preview
           const objectUrl = URL.createObjectURL(file);
           resolve({
             url: objectUrl,
@@ -55,7 +54,7 @@ export async function uploadImageToCloudinary(
     });
   }
 
-  // Real Cloudinary Unsigned Upload
+  // Real Cloudinary Unsigned Upload with preset community_food_uploads
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', UPLOAD_PRESET);

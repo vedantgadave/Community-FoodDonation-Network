@@ -1,16 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   HeartHandshake, 
   Utensils, 
   Building2, 
   ShieldCheck, 
   ArrowRight, 
-  CheckCircle, 
-  Sparkles,
-  Truck,
+  CheckCircle2, 
+  Search,
+  Package,
   Heart,
-  AlertTriangle
+  Sparkles
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { FoodSafetyBanner } from '../../components/common/FoodSafetyBanner';
@@ -18,60 +18,83 @@ import { useAuth } from '../../context/AuthContext';
 
 export const HomePage: React.FC = () => {
   const { userProfile } = useAuth();
+  const navigate = useNavigate();
 
   return (
-    <div className="space-y-16 pb-16">
+    <div className="space-y-16 pb-16 bg-slate-50 dark:bg-slate-950">
       
-      {/* HERO SECTION */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 text-white py-20 px-4 sm:px-6 lg:px-8 rounded-b-3xl shadow-2xl border-b border-emerald-800/40">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* HERO SECTION MATCHING SCREENSHOT */}
+      <section className="bg-[#133e2b] text-white py-16 sm:py-24 px-4 sm:px-6 lg:px-8 shadow-2xl relative overflow-hidden">
+        {/* Subtle background glow */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+          
+          {/* Left Column Content */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs font-semibold tracking-wider uppercase text-emerald-100 backdrop-blur-md">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              ZERO FOOD WASTE MOVEMENT
+            </div>
 
-        <div className="max-w-5xl mx-auto text-center relative z-10 space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-semibold uppercase tracking-wider backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            Social Impact Surplus Food Network
-          </div>
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05]">
+              SAVE FOOD.<br />
+              SHARE FOOD.<br />
+              <span className="text-[#ea7a63]">SERVE LIVES.</span>
+            </h1>
 
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
-            “Save Food. Share Food. <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-200 bg-clip-text text-transparent">
-              Serve Lives.”
-            </span>
-          </h1>
+            <p className="text-base sm:text-lg text-emerald-100/90 max-w-xl font-medium leading-relaxed">
+              Turn surplus food into meaningful community impact by connecting donors with organizations ready to distribute it.
+            </p>
 
-          <p className="text-base sm:text-lg text-slate-300 max-w-3xl mx-auto font-normal leading-relaxed">
-            Bridging the gap between event organizers with edible surplus food and registered NGOs capable of rapid collection and community distribution.
-          </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
-            {userProfile?.role === 'DONOR' ? (
-              <Link to="/donor/donate">
-                <Button size="lg" variant="primary" rightIcon={<ArrowRight className="w-5 h-5" />}>
-                  Donate Food Now
-                </Button>
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <Link to={userProfile?.role === 'DONOR' ? '/donor/donate' : '/register'}>
+                <button className="bg-[#ea7a63] hover:bg-[#d96952] text-white font-extrabold px-8 py-4 rounded-full shadow-lg transition-transform hover:scale-105 flex items-center gap-2.5 text-base">
+                  <Package className="w-5 h-5" /> Donate Food Now
+                </button>
               </Link>
-            ) : userProfile?.role === 'NGO' ? (
+
               <Link to="/ngo/donations">
-                <Button size="lg" variant="secondary" rightIcon={<ArrowRight className="w-5 h-5" />}>
-                  Browse Available Food
-                </Button>
+                <button className="border-2 border-white/40 hover:border-white text-white font-bold px-8 py-4 rounded-full transition-all hover:bg-white/10 flex items-center gap-2.5 text-base backdrop-blur-sm">
+                  <Search className="w-5 h-5" /> Find Food Donations
+                </button>
               </Link>
-            ) : (
-              <>
-                <Link to="/register">
-                  <Button size="lg" variant="primary" rightIcon={<ArrowRight className="w-5 h-5" />}>
-                    Join as Donor / NGO
-                  </Button>
-                </Link>
-                <Link to="/login">
-                  <Button size="lg" variant="outline" className="border-slate-700 text-white hover:bg-slate-800">
-                    Sign In
-                  </Button>
-                </Link>
-              </>
-            )}
+            </div>
           </div>
+
+          {/* Right Hero Card Container matching screenshot */}
+          <div className="lg:col-span-5">
+            <div className="bg-[#1b4a35]/90 backdrop-blur-md p-8 sm:p-10 rounded-3xl border border-emerald-600/40 shadow-2xl space-y-6">
+              <div>
+                <h3 className="text-2xl font-extrabold text-white tracking-tight uppercase">
+                  HAVE SURPLUS FOOD?
+                </h3>
+                <p className="text-xs text-emerald-100/80 mt-2 leading-relaxed">
+                  Register in 60 seconds, upload a photo verified via Cloudinary, and alert local relief NGOs instantly.
+                </p>
+              </div>
+
+              {/* Feature Box Card */}
+              <div className="bg-white text-slate-900 p-4 rounded-2xl flex items-center gap-3.5 shadow-xl">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full shrink-0">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-slate-900">Real-Time NGO Matching</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Atomic acceptance prevents duplicate claims
+                  </p>
+                </div>
+              </div>
+
+              <Link to={userProfile ? (userProfile.role === 'DONOR' ? '/donor/donate' : '/ngo/donations') : '/register'} className="block">
+                <button className="w-full bg-[#133e2b] hover:bg-[#0c291c] text-white font-extrabold py-4 px-6 rounded-2xl shadow-lg border border-emerald-500/30 transition-all hover:border-emerald-400 text-center text-sm">
+                  Post Surplus Donation Entry
+                </button>
+              </Link>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -127,7 +150,7 @@ export const HomePage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center justify-center mb-4">
               1
             </div>
@@ -137,7 +160,7 @@ export const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center justify-center mb-4">
               2
             </div>
@@ -147,7 +170,7 @@ export const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center justify-center mb-4">
               3
             </div>
@@ -157,7 +180,7 @@ export const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center justify-center mb-4">
               4
             </div>
@@ -176,7 +199,7 @@ export const HomePage: React.FC = () => {
 
       {/* ROLE HIGHLIGHT CTA CARDS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-gradient-to-br from-emerald-900 to-slate-900 text-white rounded-3xl p-8 shadow-xl border border-emerald-700/50 flex flex-col justify-between space-y-6">
+        <div className="bg-gradient-to-br from-[#133e2b] to-slate-900 text-white rounded-3xl p-8 shadow-xl border border-emerald-700/50 flex flex-col justify-between space-y-6">
           <div>
             <div className="p-3 bg-emerald-500/20 w-fit rounded-2xl border border-emerald-400/30 mb-4">
               <Utensils className="w-8 h-8 text-emerald-400" />
@@ -187,9 +210,9 @@ export const HomePage: React.FC = () => {
             </p>
           </div>
           <Link to="/register">
-            <Button variant="primary" size="md">
+            <button className="bg-[#ea7a63] hover:bg-[#d96952] text-white font-bold px-6 py-3 rounded-xl transition-transform hover:scale-105">
               Register as Food Donor
-            </Button>
+            </button>
           </Link>
         </div>
 
@@ -204,9 +227,9 @@ export const HomePage: React.FC = () => {
             </p>
           </div>
           <Link to="/register">
-            <Button variant="secondary" size="md">
+            <button className="bg-teal-600 hover:bg-teal-700 text-white font-bold px-6 py-3 rounded-xl transition-transform hover:scale-105">
               Register as Partner NGO
-            </Button>
+            </button>
           </Link>
         </div>
       </section>
