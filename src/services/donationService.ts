@@ -412,7 +412,7 @@ export async function updateDonationStatus(
     throw new Error('Donation not found in demo state.');
   }
 
-  const ref = doc(db, 'donations', id);
+  const ref = doc(db, 'donations', donationId);
   const dbUpdates: any = {
     ...updates,
     updatedAt: serverTimestamp()
