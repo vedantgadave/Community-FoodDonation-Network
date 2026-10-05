@@ -73,9 +73,18 @@ To guarantee two NGOs can **never** accept the same donation concurrently:
 - **Styling**: Tailwind CSS v4, Lucide Icons, Framer Motion
 - **Authentication**: Firebase Authentication (Email/Password)
 - **Database**: Cloud Firestore (Atomic Transactions & Composite Indexes)
-- **Media Hosting**: Cloudinary (Unsigned client-side uploads with size/MIME validation)
+- **Media Hosting**: Cloudinary (`community_food_uploads` unsigned preset, strict JPG/PNG/WEBP validation under 5MB)
+- **Interactive Maps**: MapTiler Maps API & SDK (`@maptiler/sdk`, custom pin markers, explicit browser geolocation)
 - **Routing**: React Router v7 (Role-Gated Protected Routes)
 - **Deployment**: Vercel (`vercel.json` SPA rewrite rules)
+
+---
+
+## 🗺️ Interactive Maps & Pickup Location Selection
+- **MapTiler Integration**: Powered by `@maptiler/sdk` for responsive, lightweight pickup location maps.
+- **Donor Geolocation ("Use My Current Location")**: Explicit button trigger using `navigator.geolocation` (`enableHighAccuracy: true`, `timeout: 10000`, `maximumAge: 0`) with graceful permission-denied fallbacks.
+- **Manual Pinning & Search**: Allows donors to click anywhere on the map or search landmarks to pin precise pickup coordinates (`pickupCoordinates: { latitude, longitude }`).
+- **NGO Map Visualization**: Interactive map display on NGO donation detail page (`/ngo/donations/:id`) with marker at saved pickup coordinates.
 
 ---
 
@@ -99,11 +108,14 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 
 # Cloudinary Configuration
-VITE_CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
-VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
+VITE_CLOUDINARY_CLOUD_NAME=food-donation2-0
+VITE_CLOUDINARY_UPLOAD_PRESET=community_food_uploads
+
+# MapTiler Configuration
+VITE_MAPTILER_API_KEY=fHmj3StwwZUZesRYJX3x
 
 # Demo Mode Toggle (set to "false" for live production credentials)
-VITE_ENABLE_DEMO_MODE=true
+VITE_ENABLE_DEMO_MODE=false
 ```
 
 ---

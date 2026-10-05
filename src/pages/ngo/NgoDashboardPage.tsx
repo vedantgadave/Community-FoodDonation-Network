@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Donation } from '../../types';
+import type { Donation } from '../../types';
 import { getAvailableDonations, getDonationsByNgo } from '../../services/donationService';
 import { DonationCard } from '../../components/donation/DonationCard';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';

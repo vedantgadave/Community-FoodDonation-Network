@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAllDonationsAdmin } from '../../services/donationService';
-import { Donation } from '../../types';
+import type { Donation } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { Input } from '../../components/ui/Input';

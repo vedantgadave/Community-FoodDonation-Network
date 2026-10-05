@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth, isDemoMode } from '../services/firebase';
 import { getUserProfile, createUserProfile } from '../services/userService';
-import { UserProfile, UserRole } from '../types';
+import type { UserProfile, UserRole } from '../types';
 
 const DEMO_CURRENT_USER_KEY = 'cfdn_demo_current_uid';
 

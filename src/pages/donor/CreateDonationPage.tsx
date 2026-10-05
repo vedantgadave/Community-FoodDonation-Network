@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { ImageUploader } from '../../components/image/ImageUploader';
+import { LocationPicker } from '../../components/map/LocationPicker';
 import { FoodSafetyBanner } from '../../components/common/FoodSafetyBanner';
 import { Utensils, MapPin, Clock } from 'lucide-react';
 
@@ -23,9 +24,11 @@ export const CreateDonationPage: React.FC = () => {
   const [preparedAt, setPreparedAt] = useState('');
   const [pickupDeadline, setPickupDeadline] = useState('');
   const [pickupLocation, setPickupLocation] = useState(userProfile?.location || '');
+  const [pickupCoordinates, setPickupCoordinates] = useState<{ latitude: number; longitude: number } | undefined>(undefined);
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imagePublicId, setImagePublicId] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [safetyConfirmed, setSafetyConfirmed] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -33,6 +36,11 @@ export const CreateDonationPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isUploadingImage) {
+      setError('Please wait for the image upload to complete before submitting.');
+      return;
+    }
 
     if (!foodName || !quantity || !pickupLocation || !pickupDeadline) {
       setError('Please fill in all required donation details.');
@@ -66,6 +74,7 @@ export const CreateDonationPage: React.FC = () => {
           preparedAt: preparedAt || new Date().toISOString(),
           pickupDeadline: new Date(pickupDeadline).toISOString(),
           pickupLocation,
+          pickupCoordinates: pickupCoordinates || undefined,
           description,
           imageUrl: imageUrl || undefined,
           imagePublicId: imagePublicId || undefined,
@@ -185,6 +194,13 @@ export const CreateDonationPage: React.FC = () => {
               required
             />
 
+            {/* MapTiler Location Picker */}
+            <LocationPicker
+              selectedCoordinates={pickupCoordinates}
+              onLocationSelected={(coords) => setPickupCoordinates(coords)}
+              onLocationCleared={() => setPickupCoordinates(undefined)}
+            />
+
             <div className="w-full">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Packaging & Additional Description
@@ -210,6 +226,7 @@ export const CreateDonationPage: React.FC = () => {
                 setImageUrl('');
                 setImagePublicId('');
               }}
+              onUploadingStateChange={(uploading) => setIsUploadingImage(uploading)}
             />
           </div>
 
@@ -242,8 +259,8 @@ export const CreateDonationPage: React.FC = () => {
             <Button variant="outline" type="button" onClick={() => navigate('/donor/dashboard')}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={loading}>
-              Post Surplus Donation
+            <Button variant="primary" type="submit" isLoading={loading} disabled={isUploadingImage}>
+              {isUploadingImage ? 'Uploading Image...' : 'Post Surplus Donation'}
             </Button>
           </div>
 

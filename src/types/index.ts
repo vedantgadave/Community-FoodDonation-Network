@@ -32,6 +32,10 @@ export interface Donation {
   preparedAt: string;
   pickupDeadline: string;
   pickupLocation: string;
+  pickupCoordinates?: {
+    latitude: number;
+    longitude: number;
+  };
   description: string;
 
   imageUrl?: string;

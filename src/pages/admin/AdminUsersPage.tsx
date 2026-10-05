@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAllUsers, toggleBlockUser } from '../../services/userService';
-import { UserProfile, UserRole } from '../../types';
+import type { UserProfile, UserRole } from '../../types';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';

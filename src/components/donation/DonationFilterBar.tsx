@@ -1,5 +1,5 @@
 import React from 'react';
-import { DonationFilter, FoodType } from '../../types';
+import type { DonationFilter, FoodType } from '../../types';
 import { Search, Filter, MapPin, Hash, RotateCcw } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';

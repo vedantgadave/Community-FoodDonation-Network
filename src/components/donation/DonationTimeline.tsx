@@ -1,5 +1,5 @@
 import React from 'react';
-import { Donation } from '../../types';
+import type { Donation } from '../../types';
 import { CheckCircle2, Clock, Truck, HeartHandshake, XCircle, ChevronRight } from 'lucide-react';
 
 interface DonationTimelineProps {

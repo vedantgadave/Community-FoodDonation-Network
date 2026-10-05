@@ -27,12 +27,15 @@ export async function uploadImageToCloudinary(
   // Client-side validations
   const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
   if (file.size > maxSizeBytes) {
-    throw new Error('File size exceeds 5MB limit. Please upload a smaller image.');
+    throw new Error('File size exceeds 5MB limit. Please upload a smaller image (max 5MB).');
   }
 
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  if (!allowedTypes.includes(file.type.toLowerCase())) {
-    throw new Error('Invalid file format. Only JPG, PNG, and WEBP images are allowed.');
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+
+  if (!allowedTypes.includes(file.type.toLowerCase()) || !allowedExtensions.includes(ext)) {
+    throw new Error('Invalid file format. Only JPG, PNG, and WEBP images are allowed. SVG, GIF, PDF, and videos are rejected.');
   }
 
   // If in demo mode, provide simulated upload preview

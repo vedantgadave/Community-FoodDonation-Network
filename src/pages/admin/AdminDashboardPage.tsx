@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getAllUsers } from '../../services/userService';
 import { getAllDonationsAdmin } from '../../services/donationService';
-import { UserProfile, Donation } from '../../types';
+import type { UserProfile, Donation } from '../../types';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { Button } from '../../components/ui/Button';
 import { Link } from 'react-router-dom';

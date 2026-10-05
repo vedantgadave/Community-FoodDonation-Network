@@ -2,23 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { Donation } from '../../types';
+import type { Donation } from '../../types';
 import { getDonationById, acceptDonationTransaction, updateDonationStatus } from '../../services/donationService';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { DonationTimeline } from '../../components/donation/DonationTimeline';
 import { FoodSafetyBanner } from '../../components/common/FoodSafetyBanner';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
+import { PickupLocationMap } from '../../components/map/PickupLocationMap';
 import { Button } from '../../components/ui/Button';
 import { 
   ArrowLeft, 
   MapPin, 
   Phone, 
   User, 
-  Clock, 
-  Calendar, 
-  UtensilsCrossed, 
-  ShieldCheck, 
-  Building,
   AlertTriangle
 } from 'lucide-react';
 
@@ -189,8 +185,8 @@ export const DonationDetailsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Donor Contact Details */}
-          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800/40 space-y-3">
+          {/* Donor Contact Details & Interactive Pickup Location Map */}
+          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800/40 space-y-4">
             <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-2">
               <User className="w-4 h-4 text-emerald-600" /> Donor Contact & Location Info
             </h3>
@@ -210,6 +206,17 @@ export const DonationDetailsPage: React.FC = () => {
                 <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">{donation.pickupLocation}</span>
               </div>
             </div>
+
+            {/* MapTiler Pickup Location Map (Rendered when pickupCoordinates exist) */}
+            {donation.pickupCoordinates && (
+              <div className="pt-2">
+                <PickupLocationMap
+                  latitude={donation.pickupCoordinates.latitude}
+                  longitude={donation.pickupCoordinates.longitude}
+                  locationName={donation.pickupLocation}
+                />
+              </div>
+            )}
           </div>
 
           {/* Safety Declaration */}
