@@ -1,6 +1,6 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
@@ -21,18 +21,15 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey !== 'your_firebase_api_key'
 );
 
-export const isDemoMode = env.VITE_ENABLE_DEMO_MODE === 'true' && !isFirebaseConfigured;
+export const isDemoMode = env.VITE_ENABLE_DEMO_MODE === 'true';
 
-// Initialize Firebase SDK
-const app = (isFirebaseConfigured && getApps().length === 0) 
-  ? initializeApp(firebaseConfig) 
-  : (getApps().length > 0 ? getApp() : null);
-
-export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+// Initialize Firebase SDK cleanly
+export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const auth: Auth = getAuth(app);
+export const db: Firestore = getFirestore(app);
 
 export let analytics: Analytics | null = null;
-if (app && typeof window !== 'undefined') {
+if (typeof window !== 'undefined') {
   isSupported().then((supported) => {
     if (supported) {
       analytics = getAnalytics(app);
