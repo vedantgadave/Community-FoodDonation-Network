@@ -1,8 +1,13 @@
 import { isDemoMode } from './firebase';
 
-const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
+const getEnv = () => {
+  const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {};
+  const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+  return { ...nodeEnv, ...viteEnv };
+};
+const env = getEnv();
 
-const CLOUD_NAME = env.VITE_CLOUDINARY_CLOUD_NAME || 'food-donation2-0';
+const CLOUD_NAME = env.VITE_CLOUDINARY_CLOUD_NAME || 'mcvc59as';
 const UPLOAD_PRESET = env.VITE_CLOUDINARY_UPLOAD_PRESET || 'community_food_uploads';
 
 export const isCloudinaryConfigured = Boolean(

@@ -132,8 +132,16 @@ export async function createDonation(
   const now = new Date().toISOString();
   const id = `don_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
 
+  // Strip any undefined keys so Firestore setDoc never throws an unsupported undefined error
+  const cleanData: Record<string, any> = {};
+  for (const [key, value] of Object.entries(donationData)) {
+    if (value !== undefined) {
+      cleanData[key] = value;
+    }
+  }
+
   const newDonation: Donation = {
-    ...donationData,
+    ...cleanData,
     id,
     donorId: donorUser.uid,
     donorName: donorUser.name,
@@ -142,7 +150,7 @@ export async function createDonation(
     status: 'AVAILABLE',
     createdAt: now,
     updatedAt: now,
-  };
+  } as Donation;
 
   if (isDemoMode || !db) {
     const list = getLocalDonations();
@@ -151,12 +159,20 @@ export async function createDonation(
     return newDonation;
   }
 
-  const ref = doc(db, 'donations', id);
-  await setDoc(ref, {
-    ...newDonation,
+  const firestorePayload: Record<string, any> = {
+    ...cleanData,
+    id,
+    donorId: donorUser.uid,
+    donorName: donorUser.name,
+    donorPhone: donorUser.phone,
+    donorLocation: donationData.pickupLocation || donorUser.location,
+    status: 'AVAILABLE',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  const ref = doc(db, 'donations', id);
+  await setDoc(ref, firestorePayload);
 
   return newDonation;
 }

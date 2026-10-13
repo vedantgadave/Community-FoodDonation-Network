@@ -166,30 +166,38 @@ export const CreateDonationPage: React.FC = () => {
     setLoading(true);
 
     try {
-      await createDonation(
-        {
-          donorId: userProfile.uid,
-          donorName: userProfile.name,
-          donorPhone: userProfile.phone,
-          donorLocation: userProfile.location,
-          foodName: foodName.trim(),
-          category,
-          quantity: Number(quantity),
-          unit,
-          foodType,
-          storageCondition,
-          packagingFormat: packagingCondition,
-          preparedAt: new Date(preparedAt).toISOString(),
-          pickupDeadline: new Date(pickupDeadline).toISOString(),
-          pickupLocation: pickupLocation.trim(),
-          pickupCoordinates: pickupCoordinates || undefined,
-          description: description.trim(),
-          imageUrl: imageUrl || undefined,
-          imagePublicId: imagePublicId || undefined,
-          safetyConfirmed: true,
-        },
-        userProfile
-      );
+      const donationPayload: any = {
+        donorId: userProfile.uid,
+        donorName: userProfile.name,
+        donorPhone: userProfile.phone,
+        donorLocation: userProfile.location,
+        foodName: foodName.trim(),
+        category,
+        quantity: Number(quantity),
+        unit,
+        foodType,
+        storageCondition,
+        packagingFormat: packagingCondition,
+        preparedAt: new Date(preparedAt).toISOString(),
+        pickupDeadline: new Date(pickupDeadline).toISOString(),
+        pickupLocation: pickupLocation.trim(),
+        description: description.trim(),
+        safetyConfirmed: true,
+      };
+
+      if (pickupCoordinates && typeof pickupCoordinates.latitude === 'number' && typeof pickupCoordinates.longitude === 'number') {
+        donationPayload.pickupCoordinates = pickupCoordinates;
+      }
+
+      if (imageUrl && imageUrl.trim()) {
+        donationPayload.imageUrl = imageUrl.trim();
+      }
+
+      if (imagePublicId && imagePublicId.trim()) {
+        donationPayload.imagePublicId = imagePublicId.trim();
+      }
+
+      await createDonation(donationPayload, userProfile);
 
       showToast('Surplus food donation posted successfully! Nearby NGOs alerted.', 'success');
       navigate('/donor/donations');
