@@ -4,53 +4,158 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import type { FoodType } from '../../types';
 import { createDonation } from '../../services/donationService';
-import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
-import { Button } from '../../components/ui/Button';
-import { ImageUploader } from '../../components/image/ImageUploader';
-import { LocationPicker } from '../../components/map/LocationPicker';
-import { FoodSafetyBanner } from '../../components/common/FoodSafetyBanner';
-import { Utensils, MapPin, Clock } from 'lucide-react';
+
+// Step & Sub-components
+import { DonationStepper, DONATION_STEPS } from '../../components/donation/DonationStepper';
+import { DonationPreview } from '../../components/donation/DonationPreview';
+import { DonationNavigation } from '../../components/donation/DonationNavigation';
+import { FoodDetailsStep, FOOD_CATEGORIES } from '../../components/donation/FoodDetailsStep';
+import { SafetyStep, STORAGE_OPTIONS, PACKAGING_OPTIONS } from '../../components/donation/SafetyStep';
+import { PickupDetailsStep } from '../../components/donation/PickupDetailsStep';
+import { FoodImageStep } from '../../components/donation/FoodImageStep';
+import { ReviewStep } from '../../components/donation/ReviewStep';
+import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const CreateDonationPage: React.FC = () => {
   const { userProfile } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
+  // Wizard Navigation State
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+
+  // Form Fields State
   const [foodName, setFoodName] = useState('');
+  const [category, setCategory] = useState(FOOD_CATEGORIES[0].id);
   const [quantity, setQuantity] = useState<number>(50);
   const [unit, setUnit] = useState('meals');
   const [foodType, setFoodType] = useState<FoodType>('VEGETARIAN');
-  const [preparedAt, setPreparedAt] = useState('');
-  const [pickupDeadline, setPickupDeadline] = useState('');
+
+  // Safety & Storage State
+  const getInitialTime = (hoursOffset: number = 0) => {
+    const d = new Date(Date.now() + hoursOffset * 3600 * 1000);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
+  const [preparedAt, setPreparedAt] = useState<string>(() => getInitialTime(0));
+  const [pickupDeadline, setPickupDeadline] = useState<string>(() => getInitialTime(6));
+  const [storageCondition, setStorageCondition] = useState(STORAGE_OPTIONS[0].id);
+  const [packagingCondition, setPackagingCondition] = useState(PACKAGING_OPTIONS[0]);
+  const [safetyConfirmed, setSafetyConfirmed] = useState(true);
+
+  // Logistics & Map State
   const [pickupLocation, setPickupLocation] = useState(userProfile?.location || '');
   const [pickupCoordinates, setPickupCoordinates] = useState<{ latitude: number; longitude: number } | undefined>(undefined);
   const [description, setDescription] = useState('');
+
+  // Image Upload State
   const [imageUrl, setImageUrl] = useState('');
   const [imagePublicId, setImagePublicId] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [safetyConfirmed, setSafetyConfirmed] = useState(false);
 
+  // Review State
+  const [finalDeclarationChecked, setFinalDeclarationChecked] = useState(true);
+
+  // Status & Error
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Step Validation
+  const validateCurrentStep = (step: number): boolean => {
+    setError('');
 
-    if (isUploadingImage) {
-      setError('Please wait for the image upload to complete before submitting.');
-      return;
+    if (step === 1) {
+      if (!foodName.trim()) {
+        setError('Food item name is required.');
+        return false;
+      }
+      if (!quantity || quantity <= 0) {
+        setError('Please enter a valid quantity greater than zero.');
+        return false;
+      }
+      return true;
     }
 
-    if (!foodName || !quantity || !pickupLocation || !pickupDeadline) {
-      setError('Please fill in all required donation details.');
-      return;
+    if (step === 2) {
+      if (!preparedAt) {
+        setError('Please enter the date and time when the food was prepared.');
+        return false;
+      }
+      if (!pickupDeadline) {
+        setError('Pickup deadline is required so NGOs know when surplus expires.');
+        return false;
+      }
+      if (new Date(pickupDeadline) <= new Date(preparedAt)) {
+        setError('Pickup deadline must be set to a time after the food preparation time.');
+        return false;
+      }
+      if (!safetyConfirmed) {
+        setError('You must explicitly confirm the hygiene and food safety suitability declaration.');
+        return false;
+      }
+      return true;
     }
 
-    if (!safetyConfirmed) {
-      setError('You must explicitly acknowledge and confirm food safety suitability.');
-      return;
+    if (step === 3) {
+      if (!pickupLocation.trim()) {
+        setError('Pickup location address and gate directions are required.');
+        return false;
+      }
+      return true;
     }
+
+    if (step === 4) {
+      if (isUploadingImage) {
+        setError('Please wait for the photo upload to complete before continuing.');
+        return false;
+      }
+      return true;
+    }
+
+    if (step === 5) {
+      if (!finalDeclarationChecked) {
+        setError('Please confirm the final suitability declaration before submitting.');
+        return false;
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleContinue = () => {
+    if (validateCurrentStep(currentStep)) {
+      if (!completedSteps.includes(currentStep)) {
+        setCompletedSteps(prev => [...prev, currentStep]);
+      }
+
+      if (currentStep < DONATION_STEPS.length) {
+        setCurrentStep(prev => prev + 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        handleSubmit();
+      }
+    }
+  };
+
+  const handleBack = () => {
+    setError('');
+    if (currentStep > 1) {
+      setCurrentStep(prev => prev - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleStepClick = (step: number) => {
+    if (step < currentStep || validateCurrentStep(currentStep)) {
+      setCurrentStep(step);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!validateCurrentStep(5)) return;
 
     if (!userProfile) {
       setError('You must be signed in to post a donation.');
@@ -67,15 +172,18 @@ export const CreateDonationPage: React.FC = () => {
           donorName: userProfile.name,
           donorPhone: userProfile.phone,
           donorLocation: userProfile.location,
-          foodName,
+          foodName: foodName.trim(),
+          category,
           quantity: Number(quantity),
           unit,
           foodType,
-          preparedAt: preparedAt || new Date().toISOString(),
+          storageCondition,
+          packagingFormat: packagingCondition,
+          preparedAt: new Date(preparedAt).toISOString(),
           pickupDeadline: new Date(pickupDeadline).toISOString(),
-          pickupLocation,
+          pickupLocation: pickupLocation.trim(),
           pickupCoordinates: pickupCoordinates || undefined,
-          description,
+          description: description.trim(),
           imageUrl: imageUrl || undefined,
           imagePublicId: imagePublicId || undefined,
           safetyConfirmed: true,
@@ -83,7 +191,7 @@ export const CreateDonationPage: React.FC = () => {
         userProfile
       );
 
-      showToast('Surplus food donation posted successfully!', 'success');
+      showToast('Surplus food donation posted successfully! Nearby NGOs alerted.', 'success');
       navigate('/donor/donations');
     } catch (err: any) {
       setError(err.message || 'Failed to post donation.');
@@ -94,177 +202,138 @@ export const CreateDonationPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl space-y-6">
-        
-        <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-          <span className="text-xs font-mono uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-bold">
-            Food Rescue Listing Form
-          </span>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
-            Post Surplus Food Donation
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Provide details about surplus catered food so registered NGOs can accept and arrange pickup.
-          </p>
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      
+      {/* Header Banner */}
+      <div className="space-y-1">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+          <ShieldCheck className="w-3.5 h-3.5" /> Quality Verified Food Rescue
         </div>
+        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+          Post Surplus Food
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Give your surplus food another destination in under 60 seconds.
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 5-Step Stepper Progress Bar */}
+      <DonationStepper
+        currentStep={currentStep}
+        onStepClick={handleStepClick}
+        completedSteps={completedSteps}
+      />
+
+      {/* 2-Column Desktop Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        {/* Left Column: Current Active Form Step (65-70%) */}
+        <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
           
-          {/* Food Details Group */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <Utensils className="w-4 h-4 text-emerald-600" /> Food Information
-            </h3>
-
-            <Input
-              label="Food Item / Dish Name *"
-              placeholder="e.g. Fresh Gourmet Veg Biryani & Curry Packages"
-              value={foodName}
-              onChange={(e) => setFoodName(e.target.value)}
-              required
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input
-                label="Quantity *"
-                type="number"
-                min="1"
-                placeholder="50"
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                required
-              />
-
-              <Select
-                label="Unit *"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                options={[
-                  { value: 'meals', label: 'Individual Meals' },
-                  { value: 'boxes', label: 'Packed Boxes' },
-                  { value: 'kg', label: 'Kilograms (kg)' },
-                  { value: 'servings', label: 'Servings / Trays' },
-                ]}
-              />
-
-              <Select
-                label="Food Dietary Type *"
-                value={foodType}
-                onChange={(e) => setFoodType(e.target.value as FoodType)}
-                options={[
-                  { value: 'VEGETARIAN', label: 'Vegetarian Only' },
-                  { value: 'NON_VEGETARIAN', label: 'Non-Vegetarian' },
-                ]}
-              />
-            </div>
-          </div>
-
-          {/* Time & Logistics Group */}
-          <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-emerald-600" /> Logistics & Schedule
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Prepared Date / Time"
-                type="datetime-local"
-                value={preparedAt}
-                onChange={(e) => setPreparedAt(e.target.value)}
-                helperText="Approximate time food was prepared"
-              />
-
-              <Input
-                label="Pickup Deadline *"
-                type="datetime-local"
-                value={pickupDeadline}
-                onChange={(e) => setPickupDeadline(e.target.value)}
-                helperText="Must be collected before this deadline"
-                required
-              />
-            </div>
-
-            <Input
-              label="Pickup Address / Dock Location *"
-              placeholder="Full address or pickup dock directions"
-              value={pickupLocation}
-              onChange={(e) => setPickupLocation(e.target.value)}
-              leftIcon={<MapPin className="w-4 h-4 text-slate-400" />}
-              required
-            />
-
-            {/* MapTiler Location Picker */}
-            <LocationPicker
-              selectedCoordinates={pickupCoordinates}
-              onLocationSelected={(coords) => setPickupCoordinates(coords)}
-              onLocationCleared={() => setPickupCoordinates(undefined)}
-            />
-
-            <div className="w-full">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Packaging & Additional Description
-              </label>
-              <textarea
-                rows={3}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                placeholder="Mention packaging type (foil wrapped, insulated containers), storage temperature, or special dock access notes..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Image Upload Group */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-            <ImageUploader
-              onImageUploaded={(url, pubId) => {
-                setImageUrl(url);
-                if (pubId) setImagePublicId(pubId);
-              }}
-              onImageRemoved={() => {
-                setImageUrl('');
-                setImagePublicId('');
-              }}
-              onUploadingStateChange={(uploading) => setIsUploadingImage(uploading)}
-            />
-          </div>
-
-          {/* Safety Confirmation */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
-            <FoodSafetyBanner compact />
-
-            <div className="flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60">
-              <input
-                type="checkbox"
-                id="donorSafetyConfirmed"
-                checked={safetyConfirmed}
-                onChange={(e) => setSafetyConfirmed(e.target.checked)}
-                className="mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
-                required
-              />
-              <label htmlFor="donorSafetyConfirmed" className="text-xs text-slate-800 dark:text-slate-200 font-semibold leading-relaxed">
-                “I confirm that the donated food is suitable for donation and has been handled hygienically.”
-              </label>
-            </div>
-          </div>
-
           {error && (
-            <p className="text-xs text-rose-500 font-medium p-2.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800">
-              ⚠️ {error}
-            </p>
+            <div className="flex items-center gap-2 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl text-xs font-semibold text-rose-600 dark:text-rose-400">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="outline" type="button" onClick={() => navigate('/donor/dashboard')}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit" isLoading={loading} disabled={isUploadingImage}>
-              {isUploadingImage ? 'Uploading Image...' : 'Post Surplus Donation'}
-            </Button>
-          </div>
+          {currentStep === 1 && (
+            <FoodDetailsStep
+              foodName={foodName}
+              setFoodName={setFoodName}
+              category={category}
+              setCategory={setCategory}
+              foodType={foodType}
+              setFoodType={setFoodType}
+              quantity={quantity}
+              setQuantity={setQuantity}
+              unit={unit}
+              setUnit={setUnit}
+              description={description}
+              setDescription={setDescription}
+            />
+          )}
 
-        </form>
+          {currentStep === 2 && (
+            <SafetyStep
+              preparedAt={preparedAt}
+              setPreparedAt={setPreparedAt}
+              pickupDeadline={pickupDeadline}
+              setPickupDeadline={setPickupDeadline}
+              storageCondition={storageCondition}
+              setStorageCondition={setStorageCondition}
+              packagingCondition={packagingCondition}
+              setPackagingCondition={setPackagingCondition}
+              safetyConfirmed={safetyConfirmed}
+              setSafetyConfirmed={setSafetyConfirmed}
+            />
+          )}
+
+          {currentStep === 3 && (
+            <PickupDetailsStep
+              pickupLocation={pickupLocation}
+              setPickupLocation={setPickupLocation}
+              pickupCoordinates={pickupCoordinates}
+              setPickupCoordinates={setPickupCoordinates}
+            />
+          )}
+
+          {currentStep === 4 && (
+            <FoodImageStep
+              imageUrl={imageUrl}
+              setImageUrl={setImageUrl}
+              setImagePublicId={setImagePublicId}
+              setIsUploadingImage={setIsUploadingImage}
+            />
+          )}
+
+          {currentStep === 5 && (
+            <ReviewStep
+              foodName={foodName}
+              quantity={quantity}
+              unit={unit}
+              foodType={foodType}
+              category={category}
+              preparedAt={preparedAt}
+              pickupDeadline={pickupDeadline}
+              pickupLocation={pickupLocation}
+              pickupCoordinates={pickupCoordinates}
+              storageCondition={storageCondition}
+              packagingCondition={packagingCondition}
+              description={description}
+              imageUrl={imageUrl}
+              finalDeclarationChecked={finalDeclarationChecked}
+              setFinalDeclarationChecked={setFinalDeclarationChecked}
+            />
+          )}
+
+          {/* Navigation Controls */}
+          <DonationNavigation
+            currentStep={currentStep}
+            totalSteps={DONATION_STEPS.length}
+            onBack={handleBack}
+            onContinue={handleContinue}
+            isSubmitting={loading}
+            canContinue={!isUploadingImage}
+          />
+        </div>
+
+        {/* Right Column: Live Contextual Donation Preview Sidebar (30-35%) */}
+        <aside className="lg:col-span-4 hidden lg:block">
+          <DonationPreview
+            foodName={foodName}
+            quantity={quantity}
+            unit={unit}
+            foodType={foodType}
+            category={category}
+            storageCondition={storageCondition}
+            preparedAt={preparedAt}
+            pickupDeadline={pickupDeadline}
+            pickupLocation={pickupLocation}
+            imageUrl={imageUrl}
+          />
+        </aside>
+
       </div>
     </div>
   );

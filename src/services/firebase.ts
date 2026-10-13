@@ -3,7 +3,12 @@ import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
-const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
+const getEnv = () => {
+  const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {};
+  const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+  return { ...nodeEnv, ...viteEnv };
+};
+const env = getEnv();
 
 export const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyDjBeS7wVZzqAzpugZk9DmgOQfeFSEyG9I",

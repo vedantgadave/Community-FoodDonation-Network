@@ -111,6 +111,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<UserProfile> => {
     setLoading(true);
     try {
+      if (role === 'ADMIN') {
+        throw new Error('Unauthorized: Admin accounts cannot be self-registered.');
+      }
       const now = new Date().toISOString();
 
       if (!isDemoMode && auth) {

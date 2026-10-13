@@ -37,6 +37,8 @@ export interface Donation {
     longitude: number;
   };
   description: string;
+  category?: string;
+  storageCondition?: string;
 
   imageUrl?: string;
   imagePublicId?: string;
