@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { 
   maptilersdk, 
-  MAPTILER_API_KEY, 
   isMapTilerConfigured 
 } from '../../services/mapTilerService';
 import { 
@@ -24,7 +23,6 @@ import type {
 } from '../../types';
 import { 
   Navigation, 
-  Compass, 
   LocateFixed, 
   Clock, 
   Milestone, 
@@ -34,8 +32,8 @@ import {
   CheckCircle2, 
   Radio, 
   Route as RouteIcon,
-  Sparkles,
-  MapPin
+  MapPin,
+  Compass
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 
@@ -66,15 +64,28 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
   const [routePreference, setRoutePreference] = useState<RoutePreference>('FASTEST');
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<'AQUIRING' | 'ACTIVE' | 'SIGNAL_LOST' | 'DENIED' | 'UNAVAILABLE' | 'STOPPED'>('AQUIRING');
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [isRerouting, setIsRerouting] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
-  const [journeyActive, setJourneyActive] = useState(true);
+  const [accuracyWarning, setAccuracyWarning] = useState<string | null>(null);
 
-  // Guaranteed valid coordinates (fallback to central district if donor didn't pin)
-  const destLat = donation.pickupCoordinates?.latitude || 16.7050;
-  const destLng = donation.pickupCoordinates?.longitude || 74.2433;
+  // Validate destination pickup coordinates
+  const validPickupCoords = donation.pickupCoordinates &&
+    typeof donation.pickupCoordinates.latitude === 'number' &&
+    typeof donation.pickupCoordinates.longitude === 'number' &&
+    !isNaN(donation.pickupCoordinates.latitude) &&
+    !isNaN(donation.pickupCoordinates.longitude) &&
+    donation.pickupCoordinates.latitude >= -90 &&
+    donation.pickupCoordinates.latitude <= 90 &&
+    donation.pickupCoordinates.longitude >= -180 &&
+    donation.pickupCoordinates.longitude <= 180
+      ? donation.pickupCoordinates
+      : null;
+
+  const destLat = validPickupCoords?.latitude;
+  const destLng = validPickupCoords?.longitude;
 
   // Draw or update GeoJSON route on map
   const renderRouteOnMap = useCallback((routeCoords: [number, number][]) => {
@@ -104,7 +115,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
             data: geojsonData,
           });
 
-          // Glowing outer casing for road visibility
+          // Outer road line casing
           map.addLayer({
             id: casingLayerId,
             type: 'line',
@@ -116,7 +127,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
             paint: {
               'line-color': '#064e3b',
               'line-width': 8,
-              'line-opacity': 0.6,
+              'line-opacity': 0.7,
             },
           });
 
@@ -136,7 +147,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
           });
         }
 
-        // Auto-fit camera to bound entire route + receiver + destination
+        // Fit map bounds to entire route
         if (routeCoords.length > 0) {
           const bounds = new maptilersdk.LngLatBounds();
           routeCoords.forEach((coord) => bounds.extend(coord));
@@ -154,8 +165,13 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
     }
   }, []);
 
-  // Compute road routes via OSRM
+  // Compute road routes via OSRM with true coordinates
   const computeAndApplyRoute = useCallback(async (origin: { latitude: number; longitude: number }, isReroute = false) => {
+    if (destLat === undefined || destLng === undefined) {
+      setRouteError('Pickup location coordinates are not available.');
+      return;
+    }
+
     if (isReroute) setIsRerouting(true);
     else setIsCalculatingRoute(true);
     setRouteError(null);
@@ -174,7 +190,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       // Record this point as last routed
       lastRoutedCoordsRef.current = { lat: origin.latitude, lng: origin.longitude };
 
-      // Publish/Synchronize active route metadata to Firestore journey
+      // Publish active route metadata to Firestore journey
       const dist = preferred.distanceMeters;
       const dur = preferred.durationSeconds;
       const eta = new Date(Date.now() + dur * 1000).toISOString();
@@ -182,7 +198,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       await updateJourneyLocation(donation.id, currentUser.uid, {
         currentLatitude: origin.latitude,
         currentLongitude: origin.longitude,
-        journeyStatus: dist < 50 ? 'ARRIVED' : 'IN_TRANSIT',
+        journeyStatus: dist <= 40 ? 'ARRIVED' : 'IN_TRANSIT',
         remainingDistanceMeters: dist,
         estimatedDurationSeconds: dur,
         etaTimestamp: eta,
@@ -190,13 +206,12 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         activeRoutePolyline: preferred.coordinates,
       }).catch((e) => console.warn('updateJourneyLocation error caught:', e));
 
-      if (dist < 50) {
+      if (dist <= 40) {
         setHasArrived(true);
       }
-
     } catch (err: any) {
       console.error('Failed to calculate route:', err);
-      setRouteError(err.message || 'Could not find a road route. Please verify internet connection.');
+      setRouteError(err.message || 'Could not find a road route. Please verify your internet connection.');
     } finally {
       setIsCalculatingRoute(false);
       setIsRerouting(false);
@@ -206,6 +221,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
+    if (destLat === undefined || destLng === undefined) return;
 
     if (!isMapTilerConfigured()) {
       setRouteError('Map visualization key not configured.');
@@ -223,7 +239,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
       mapInstanceRef.current = map;
 
-      // Destination Marker (Red pin with pulse effect)
+      // Destination Marker
       const destEl = document.createElement('div');
       destEl.className = 'destination-pin-marker';
       destEl.innerHTML = `
@@ -241,14 +257,12 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       destMarker.setPopup(destPopup);
       destinationMarkerRef.current = destMarker;
 
-      // In case style takes time to load, trigger resize
       map.on('load', () => {
         map.resize();
         if (selectedRoute && selectedRoute.coordinates.length > 0) {
           renderRouteOnMap(selectedRoute.coordinates);
         }
       });
-
     } catch (err: any) {
       console.error('Failed to init map:', err);
       setRouteError('Failed to initialize navigation map.');
@@ -262,10 +276,21 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
     };
   }, [destLat, destLng, donation.pickupLocation]);
 
-  // Geolocation tracking with Simulated Start Fallback if GPS blocked or unavailable
-  useEffect(() => {
-    // Initial journey session initialization in Firestore
-    const initJourney = async (initialLat: number, initialLng: number) => {
+  // GPS Watcher & Real-time position tracking
+  const startGpsWatcher = useCallback(() => {
+    if (destLat === undefined || destLng === undefined) return;
+
+    if (!('geolocation' in navigator)) {
+      setGpsStatus('UNAVAILABLE');
+      setGpsError('Geolocation is not supported by your browser or device.');
+      return;
+    }
+
+    setGpsStatus('AQUIRING');
+    setGpsError(null);
+
+    // Initial journey session record in Firestore
+    const initJourneySession = async (initialLat: number, initialLng: number) => {
       const initialPayload: PickupJourney = {
         id: donation.id,
         donationId: donation.id,
@@ -283,7 +308,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await startPickupJourney(initialPayload).catch((e) => console.warn('startPickupJourney error caught:', e));
+      await startPickupJourney(initialPayload).catch((e) => console.warn('startPickupJourney error:', e));
     };
 
     const updateReceiverMarkerOnMap = (lat: number, lng: number) => {
@@ -307,22 +332,35 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       }
     };
 
-    const handlePositionUpdate = (lat: number, lng: number, heading?: number, speed?: number) => {
+    const handlePositionUpdate = (pos: GeolocationPosition) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy;
+      const heading = pos.coords.heading || undefined;
+      const speed = pos.coords.speed || undefined;
+
       const newPos = { latitude: lat, longitude: lng };
       setCurrentPosition(newPos);
+      setGpsStatus('ACTIVE');
       setGpsError(null);
 
-      // 1. Update Marker
+      if (accuracy > 100) {
+        setAccuracyWarning(`GPS accuracy is approx ±${Math.round(accuracy)}m. Move closer to open sky for tighter road tracking.`);
+      } else {
+        setAccuracyWarning(null);
+      }
+
+      // Update receiver marker on map
       updateReceiverMarkerOnMap(lat, lng);
 
-      // 2. Initial route calculation on first fix
+      // Initial route on first GPS fix
       if (!lastRoutedCoordsRef.current) {
-        initJourney(lat, lng);
+        initJourneySession(lat, lng);
         computeAndApplyRoute(newPos);
         return;
       }
 
-      // 3. Dynamic Rerouting trigger: If receiver moved > 40 meters
+      // Rerouting: If receiver moved > 40 meters from previous calculation point
       const movedDist = calculateHaversineDistanceMeters(
         lastRoutedCoordsRef.current.lat,
         lastRoutedCoordsRef.current.lng,
@@ -334,78 +372,59 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         computeAndApplyRoute(newPos, true);
       }
 
-      // 4. Check Arrival (< 40m)
+      // Check Arrival (< 40m)
       const distToDest = calculateHaversineDistanceMeters(lat, lng, destLat, destLng);
       if (distToDest <= 40) {
         setHasArrived(true);
       }
 
-      // 5. Throttled Firestore coordinate publishing (every 5 seconds)
+      // Throttled Firestore coordinate publishing (every 5 seconds)
       const now = Date.now();
       if (now - lastWriteTimeRef.current > 5000) {
         lastWriteTimeRef.current = now;
         updateJourneyLocation(donation.id, currentUser.uid, {
           currentLatitude: lat,
           currentLongitude: lng,
-          heading: typeof heading === 'number' ? heading : undefined,
-          speed: typeof speed === 'number' ? speed : undefined,
+          heading,
+          speed,
           journeyStatus: distToDest <= 40 ? 'ARRIVED' : 'IN_TRANSIT',
           remainingDistanceMeters: Math.round(distToDest),
         }).catch((e) => console.warn('Throttled GPS sync error:', e));
       }
     };
 
-    if (navigator.geolocation) {
-      const handleSuccess = (pos: GeolocationPosition) => {
-        handlePositionUpdate(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          pos.coords.heading || undefined,
-          pos.coords.speed || undefined
-        );
-      };
+    const handleError = (err: GeolocationPositionError) => {
+      console.warn('Geolocation error:', err.code, err.message);
+      if (err.code === err.PERMISSION_DENIED) {
+        setGpsStatus('DENIED');
+        setGpsError('Location permission was denied. Please allow location access in your browser address bar to navigate to the pickup point.');
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        setGpsStatus('UNAVAILABLE');
+        setGpsError('GPS signal is currently unavailable. Please check your device location services.');
+      } else if (err.code === err.TIMEOUT) {
+        setGpsStatus('SIGNAL_LOST');
+        setGpsError('GPS acquisition timed out. Re-trying location fix...');
+      }
+    };
 
-      const handleError = (err: GeolocationPositionError) => {
-        console.warn('Geolocation warning code:', err.code, err.message);
-        let msg = 'Unable to acquire GPS location.';
-        if (err.code === err.PERMISSION_DENIED) {
-          msg = 'Location permission is denied in browser. Using district starting position so you can preview the route!';
-          // Provide realistic starting position ~2.5 km away so road route computes instantly
-          const fallbackStartLat = destLat + 0.015;
-          const fallbackStartLng = destLng + 0.015;
-          handlePositionUpdate(fallbackStartLat, fallbackStartLng);
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          msg = 'GPS signal unavailable. Using estimated dispatch location.';
-          const fallbackStartLat = destLat + 0.015;
-          const fallbackStartLng = destLng + 0.015;
-          handlePositionUpdate(fallbackStartLat, fallbackStartLng);
-        } else if (err.code === err.TIMEOUT) {
-          msg = 'GPS acquisition timed out. Retrying...';
-        }
-        setGpsError(msg);
-      };
+    const watchId = navigator.geolocation.watchPosition(handlePositionUpdate, handleError, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 4000,
+    });
+    watchIdRef.current = watchId;
+  }, [destLat, destLng, donation, currentUser, computeAndApplyRoute, routePreference]);
 
-      const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
-      });
-      watchIdRef.current = watchId;
-
-    } else {
-      // Fallback for browsers without geolocation
-      setGpsError('Geolocation not supported on this device. Using default dispatch point.');
-      const fallbackStartLat = destLat + 0.015;
-      const fallbackStartLng = destLng + 0.015;
-      handlePositionUpdate(fallbackStartLat, fallbackStartLng);
-    }
+  useEffect(() => {
+    startGpsWatcher();
 
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
     };
-  }, [destLat, destLng, donation, currentUser, computeAndApplyRoute, routePreference]);
+  }, [startGpsWatcher]);
 
   // Recenter map on user location
   const handleRecenter = () => {
@@ -417,17 +436,18 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
     });
   };
 
-  // Stop active navigation
+  // Stop active navigation cleanly and remove Firestore journey
   const handleStopNavigation = async () => {
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
-    setJourneyActive(false);
+    setGpsStatus('STOPPED');
     await stopPickupJourney(donation.id);
     if (onCloseNavigation) onCloseNavigation();
   };
 
-  // Switch between Fastest / Shortest routes
+  // Route alternative selection
   const handleSelectRouteOption = (route: RouteOption) => {
     setSelectedRoute(route);
     setRoutePreference(route.preference);
@@ -444,22 +464,49 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
     }
   };
 
+  // If pickup location is missing coordinates, do NOT fabricate anything
+  if (!validPickupCoords) {
+    return (
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center space-y-4 shadow-xl">
+        <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center mx-auto">
+          <MapPin className="w-8 h-8" />
+        </div>
+        <div>
+          <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+            Pickup location coordinates unavailable
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+            This donation has an address ({donation.pickupLocation}) but exact GPS coordinates were not pinned by the donor. Live turn-by-turn navigation cannot calculate a road route without valid destination coordinates.
+          </p>
+        </div>
+        <div className="flex justify-center gap-3 pt-2">
+          {onCloseNavigation && (
+            <Button variant="outline" size="sm" onClick={onCloseNavigation}>
+              Return to Listing
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[650px] bg-slate-900 text-white rounded-3xl overflow-hidden border border-slate-800 shadow-2xl relative">
       {/* TOP HUD: Destination & Live Metrics Bar */}
       <div className="p-4 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 z-10 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-emerald-600/20 text-emerald-400 rounded-2xl border border-emerald-500/30 flex items-center justify-center">
-            <Navigation className="w-5 h-5 animate-pulse" />
+            <Compass className="w-5 h-5 animate-spin" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 animate-ping text-emerald-400" /> Live GPS Turn Navigation
+                {gpsStatus === 'ACTIVE' && <Radio className="w-3.5 h-3.5 animate-ping text-emerald-400" />}
+                {gpsStatus === 'ACTIVE' ? 'Navigation Active' : gpsStatus === 'AQUIRING' ? 'Acquiring GPS...' : 'GPS Status: ' + gpsStatus}
               </span>
               {isRerouting && (
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3 animate-spin" /> Rerouting...
+                  <RefreshCw className="w-3 h-3 animate-spin" /> Recalculating route...
                 </span>
               )}
             </div>
@@ -469,7 +516,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
           </div>
         </div>
 
-        {/* Live Distance & ETA Pills */}
+        {/* Live Distance & ETA Pills from OSRM */}
         {selectedRoute && (
           <div className="flex items-center gap-2">
             <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 flex items-center gap-2">
@@ -495,19 +542,26 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         )}
       </div>
 
-      {/* GPS / Route Alerts */}
+      {/* GPS Warning / Permission Bar */}
       {gpsError && (
-        <div className="bg-amber-950/90 border-b border-amber-800 text-amber-200 text-xs px-4 py-2.5 flex items-center justify-between z-10">
+        <div className="bg-rose-950/90 border-b border-rose-800 text-rose-200 text-xs px-4 py-2.5 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{gpsError}</span>
           </div>
           <button
-            onClick={() => currentPosition && computeAndApplyRoute(currentPosition)}
-            className="text-[11px] font-bold text-amber-300 hover:text-white underline ml-2"
+            onClick={startGpsWatcher}
+            className="text-[11px] font-bold text-rose-200 hover:text-white underline ml-2 shrink-0"
           >
-            Retry
+            Retry Location
           </button>
+        </div>
+      )}
+
+      {accuracyWarning && !gpsError && (
+        <div className="bg-amber-950/80 border-b border-amber-800 text-amber-200 text-[11px] px-4 py-1.5 flex items-center gap-2 z-10">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>{accuracyWarning}</span>
         </div>
       )}
 
@@ -519,9 +573,9 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
           </div>
           <button
             onClick={() => currentPosition && computeAndApplyRoute(currentPosition)}
-            className="text-[11px] font-bold text-amber-300 hover:text-white underline ml-2"
+            className="text-[11px] font-bold text-amber-300 hover:text-white underline ml-2 shrink-0"
           >
-            Recalculate
+            Recalculate Route
           </button>
         </div>
       )}
@@ -533,7 +587,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
             <div>
               <p className="font-extrabold text-white text-sm">You have arrived at the pickup location!</p>
-              <p className="text-[11px] text-emerald-300">Please meet donor {donation.donorName} and verify the food safety seal.</p>
+              <p className="text-[11px] text-emerald-300">Please meet donor {donation.donorName} and verify the food safety package.</p>
             </div>
           </div>
           {onFinishPickup && (
@@ -543,7 +597,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
               onClick={onFinishPickup}
               className="bg-emerald-600 hover:bg-emerald-500 font-bold"
             >
-              Confirm Food Picked Up
+              Confirm Picked Up
             </Button>
           )}
         </div>
@@ -553,11 +607,12 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       <div className="flex-1 w-full relative">
         <div ref={mapContainerRef} className="w-full h-full min-h-[350px]" />
 
-        {/* Floating Controls Overlay */}
+        {/* Floating Controls */}
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
           <button
             onClick={handleRecenter}
-            className="p-3 bg-slate-900/90 hover:bg-slate-800 text-white rounded-2xl shadow-xl border border-slate-700/80 transition-all hover:scale-105"
+            disabled={!currentPosition}
+            className="p-3 bg-slate-900/90 hover:bg-slate-800 disabled:opacity-40 text-white rounded-2xl shadow-xl border border-slate-700/80 transition-all hover:scale-105"
             title="Recenter on My Location"
             aria-label="Recenter on My Location"
           >
@@ -566,7 +621,8 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
           <button
             onClick={() => currentPosition && computeAndApplyRoute(currentPosition, true)}
-            className="p-3 bg-slate-900/90 hover:bg-slate-800 text-white rounded-2xl shadow-xl border border-slate-700/80 transition-all hover:scale-105"
+            disabled={!currentPosition || isCalculatingRoute}
+            className="p-3 bg-slate-900/90 hover:bg-slate-800 disabled:opacity-40 text-white rounded-2xl shadow-xl border border-slate-700/80 transition-all hover:scale-105"
             title="Recalculate Route"
             aria-label="Recalculate Route"
           >
@@ -579,15 +635,14 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
           <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-2xs flex items-center justify-center z-20">
             <div className="bg-slate-900/90 px-5 py-3 rounded-2xl border border-slate-800 shadow-xl flex items-center gap-3">
               <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
-              <span className="text-xs font-bold text-slate-200">Computing genuine road route...</span>
+              <span className="text-xs font-bold text-slate-200">Calculating real road route via OpenStreetMap...</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* BOTTOM FOOTER: Route Alternatives & Navigation Actions */}
+      {/* BOTTOM FOOTER */}
       <div className="p-4 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 z-10 space-y-3">
-        {/* Route Alternatives Selection */}
         {routes.length > 1 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <span className="text-[11px] text-slate-400 font-semibold flex items-center gap-1 shrink-0">
@@ -617,7 +672,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
         <div className="flex items-center justify-between gap-3">
           <div className="text-[11px] text-slate-400">
-            <span>Live location shared with donor • OpenStreetMap road network</span>
+            <span>Live GPS road navigation • Throttled real-time updates</span>
           </div>
 
           <div className="flex items-center gap-2">

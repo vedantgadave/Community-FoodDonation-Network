@@ -14,20 +14,23 @@ export const NotificationBanner: React.FC = () => {
     if (!userProfile || userProfile.role !== 'NGO') return;
 
     const unsubscribe = subscribeToNewDonationAlerts(userProfile, (donation) => {
-      // 1. Show interactive in-app toast/banner
+      // 1. Show interactive in-app banner for foreground visibility
       setActiveAlert(donation);
 
-      // 2. Also pop browser desktop notification if permitted
-      const portions = donation.quantity ? `${donation.quantity} ${donation.unit || 'portions'}` : 'Surplus food';
-      const pickupArea = donation.pickupLocation ? donation.pickupLocation.split(',')[0].trim() : 'Local area';
-      showLocalBrowserNotification(
-        '🍱 New Food Donation Available!',
-        `${portions} available for pickup near ${pickupArea}. Tap to view details.`,
-        donation.id,
-        () => {
-          navigate(`/ngo/donations/${donation.id}`);
-        }
-      );
+      // 2. Only show native OS/browser notification if the tab is hidden/backgrounded
+      // This prevents double-alerting when the user is actively viewing the website
+      if (document.visibilityState === 'hidden') {
+        const portions = donation.quantity ? `${donation.quantity} ${donation.unit || 'portions'}` : 'Surplus food';
+        const pickupArea = donation.pickupLocation ? donation.pickupLocation.split(',')[0].trim() : 'Local area';
+        showLocalBrowserNotification(
+          '🍱 New Food Donation Available!',
+          `${portions} available for pickup near ${pickupArea}. Tap to view details.`,
+          donation.id,
+          () => {
+            navigate(`/ngo/donations/${donation.id}`);
+          }
+        );
+      }
     });
 
     return () => {

@@ -30,8 +30,8 @@ export const DonorTrackingCard: React.FC<DonorTrackingCardProps> = ({ donation }
   const mapInstanceRef = useRef<maptilersdk.Map | null>(null);
   const receiverMarkerRef = useRef<maptilersdk.Marker | null>(null);
 
-  const destLat = donation.pickupCoordinates?.latitude || 16.7050;
-  const destLng = donation.pickupCoordinates?.longitude || 74.2433;
+  const destLat = donation.pickupCoordinates?.latitude ?? journey?.destinationLatitude;
+  const destLng = donation.pickupCoordinates?.longitude ?? journey?.destinationLongitude;
 
   // Real-time subscription to active journey
   useEffect(() => {

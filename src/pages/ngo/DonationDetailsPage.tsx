@@ -39,13 +39,21 @@ export const DonationDetailsPage: React.FC = () => {
     setLoading(true);
     getDonationById(id)
       .then((data) => {
-        if (data) {
-          // Ensure valid coordinates so map and navigation always render seamlessly
-          if (!data.pickupCoordinates || !data.pickupCoordinates.latitude || !data.pickupCoordinates.longitude) {
-            data.pickupCoordinates = {
-              latitude: 16.7050,
-              longitude: 74.2433,
-            };
+        // Validate real coordinates without fabricating fallback locations
+        if (data && data.pickupCoordinates) {
+          const lat = data.pickupCoordinates.latitude;
+          const lng = data.pickupCoordinates.longitude;
+          if (
+            typeof lat !== 'number' ||
+            typeof lng !== 'number' ||
+            isNaN(lat) ||
+            isNaN(lng) ||
+            lat < -90 ||
+            lat > 90 ||
+            lng < -180 ||
+            lng > 180
+          ) {
+            data.pickupCoordinates = undefined;
           }
         }
         setDonation(data);
@@ -117,8 +125,14 @@ export const DonationDetailsPage: React.FC = () => {
   const isAssignedNgo = userProfile?.role === 'NGO' && (donation.acceptedBy === userProfile.uid || !donation.acceptedBy);
   const isDonorOwner = userProfile?.uid === donation.donorId;
 
-  // Resolved safe coordinates
-  const pickupCoords = donation.pickupCoordinates || { latitude: 16.7050, longitude: 74.2433 };
+  // Valid real coordinates (null if not provided by donor)
+  const hasValidPickupCoords = Boolean(
+    donation.pickupCoordinates &&
+    typeof donation.pickupCoordinates.latitude === 'number' &&
+    typeof donation.pickupCoordinates.longitude === 'number' &&
+    !isNaN(donation.pickupCoordinates.latitude) &&
+    !isNaN(donation.pickupCoordinates.longitude)
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -148,7 +162,7 @@ export const DonationDetailsPage: React.FC = () => {
             </Button>
           </div>
           <LiveNavigationMap
-            donation={{ ...donation, pickupCoordinates: pickupCoords }}
+            donation={donation}
             currentUser={userProfile}
             onFinishPickup={() => handleStatusUpdate('PICKED_UP')}
             onCloseNavigation={() => setIsNavigating(false)}
@@ -271,14 +285,23 @@ export const DonationDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Static Map when not in active turn-by-turn navigation */}
+            {/* Real Pickup Map when coordinates exist */}
             {!isNavigating && (
               <div className="pt-2">
-                <PickupLocationMap
-                  latitude={pickupCoords.latitude}
-                  longitude={pickupCoords.longitude}
-                  locationName={donation.pickupLocation}
-                />
+                {hasValidPickupCoords ? (
+                  <PickupLocationMap
+                    latitude={donation.pickupCoordinates!.latitude}
+                    longitude={donation.pickupCoordinates!.longitude}
+                    locationName={donation.pickupLocation}
+                  />
+                ) : (
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Pickup location GPS coordinates unavailable. Exact pickup pin was not provided for this listing.</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -308,14 +331,22 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {/* NAVIGATE TO PICKUP BUTTON (Available whenever accepted or previewing) */}
+              {/* NAVIGATE TO PICKUP BUTTON */}
               {userProfile?.role === 'NGO' && donation.status === 'ACCEPTED' && !isNavigating && (
                 <Button
                   variant="primary"
                   size="lg"
                   className="bg-emerald-600 hover:bg-emerald-700 font-bold"
                   leftIcon={<Navigation className="w-4 h-4" />}
-                  onClick={() => setIsNavigating(true)}
+                  disabled={!hasValidPickupCoords}
+                  title={!hasValidPickupCoords ? 'Pickup location coordinates unavailable' : undefined}
+                  onClick={() => {
+                    if (!hasValidPickupCoords) {
+                      showToast('Cannot start turn-by-turn navigation: pickup coordinates are unavailable for this donation.', 'warning');
+                      return;
+                    }
+                    setIsNavigating(true);
+                  }}
                 >
                   Navigate to Pickup
                 </Button>

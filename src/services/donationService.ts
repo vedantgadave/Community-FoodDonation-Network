@@ -154,12 +154,22 @@ export async function createDonation(
     }
   }
 
-  // Ensure default fallback coordinates if none provided
-  if (!cleanData.pickupCoordinates) {
-    cleanData.pickupCoordinates = {
-      latitude: 16.7050,
-      longitude: 74.2433,
-    };
+  // Validate pickup coordinates if provided; reject malformed numbers
+  if (cleanData.pickupCoordinates) {
+    const lat = cleanData.pickupCoordinates.latitude;
+    const lng = cleanData.pickupCoordinates.longitude;
+    if (
+      typeof lat !== 'number' ||
+      typeof lng !== 'number' ||
+      isNaN(lat) ||
+      isNaN(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      delete cleanData.pickupCoordinates;
+    }
   }
 
   const newDonation: Donation = {
@@ -509,4 +519,61 @@ export async function updateDonationStatus(
   }
 
   return { ...currentDonation, ...updates };
+}
+
+/**
+ * Update or correct pickup coordinates for a donation
+ * Only the donor owner or admin may update the location
+ */
+export async function updateDonationPickupCoordinates(
+  donationId: string,
+  user: UserProfile,
+  coordinates: { latitude: number; longitude: number }
+): Promise<Donation> {
+  const { latitude, longitude } = coordinates;
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    isNaN(latitude) ||
+    isNaN(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    throw new Error('Invalid GPS coordinates provided. Latitude must be -90..90 and longitude -180..180.');
+  }
+
+  const donation = await getDonationById(donationId);
+  if (!donation) throw new Error('Donation record not found.');
+
+  if (user.role !== 'ADMIN' && donation.donorId !== user.uid) {
+    throw new Error('Unauthorized: Only the donor owner or admin can update the pickup location.');
+  }
+
+  const now = new Date().toISOString();
+  const coords = { latitude, longitude };
+
+  // Update local
+  const localList = getLocalDonations();
+  const idx = localList.findIndex(d => d.id === donationId);
+  if (idx !== -1) {
+    localList[idx].pickupCoordinates = coords;
+    localList[idx].updatedAt = now;
+    saveLocalDonations(localList);
+  }
+
+  if (!isDemoMode && db) {
+    try {
+      const ref = doc(db, 'donations', donationId);
+      await updateDoc(ref, {
+        pickupCoordinates: coords,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateDonationPickupCoordinates fallback:', err);
+    }
+  }
+
+  return { ...donation, pickupCoordinates: coords, updatedAt: now };
 }

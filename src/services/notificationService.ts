@@ -95,11 +95,9 @@ export async function requestNotificationPermissionAndGetToken(userUid: string):
     }
     return null;
   } catch (err: any) {
-    console.warn('Failed to retrieve FCM token:', err);
-    // Provide clean fallback token for development if VAPID is unconfigured
-    const devToken = `browser_device_${userUid.substring(0, 6)}_${navigator.userAgent.slice(-8).replace(/[^a-zA-Z0-9]/g, '')}`;
-    await saveUserDeviceToken(userUid, devToken);
-    return devToken;
+    console.warn('Failed to retrieve real FCM token:', err);
+    // Do not fabricate fake tokens for production; inform caller of setup requirement
+    throw new Error(err.message || 'FCM registration token could not be generated. Please verify VAPID configuration.');
   }
 }
 
@@ -258,6 +256,9 @@ export async function notifyEligibleNgosOfNewDonation(donation: Donation): Promi
  * Real-time subscription for eligible NGOs:
  * Automatically alerts verified NGOs in foreground when a new donation is published.
  */
+// Track processed alert IDs to guarantee idempotency across multiple tabs or listeners
+const processedDonationAlertIds = new Set<string>();
+
 export function subscribeToNewDonationAlerts(
   userProfile: UserProfile | null,
   onNewDonation: (donation: Donation) => void
@@ -273,13 +274,17 @@ export function subscribeToNewDonationAlerts(
       bc = new BroadcastChannel('cfdn_donation_alerts');
       bc.onmessage = (event) => {
         if (event.data?.type === 'NEW_DONATION' && event.data?.donationId) {
-          const fakeDonation = {
-            id: event.data.donationId,
+          const donationId = event.data.donationId;
+          if (processedDonationAlertIds.has(donationId)) return;
+          processedDonationAlertIds.add(donationId);
+
+          const alertDonation = {
+            id: donationId,
             foodName: event.data.foodName || 'Surplus Food',
             pickupLocation: event.data.pickupLocation,
             status: 'AVAILABLE' as const,
           } as Donation;
-          onNewDonation(fakeDonation);
+          onNewDonation(alertDonation);
         }
       };
     } catch {}
@@ -307,9 +312,13 @@ export function subscribeToNewDonationAlerts(
 
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
+        const donationId = change.doc.id;
+        if (processedDonationAlertIds.has(donationId)) return;
+        processedDonationAlertIds.add(donationId);
+
         const data = change.doc.data() as Donation;
         if (data.status === 'AVAILABLE') {
-          onNewDonation({ ...data, id: change.doc.id });
+          onNewDonation({ ...data, id: donationId });
         }
       }
     });

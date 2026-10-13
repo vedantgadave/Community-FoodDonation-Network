@@ -162,7 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone,
           role,
           authorizedRoles: [role],
-          ngoVerificationStatus: role === 'NGO' ? 'VERIFIED' : 'NONE',
+          ngoVerificationStatus: role === 'NGO' ? 'PENDING' : 'NONE',
           organizationName: organizationName || (role === 'NGO' ? name : ''),
           location,
           isBlocked: false,
@@ -183,7 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone,
           role,
           authorizedRoles: [role],
-          ngoVerificationStatus: role === 'NGO' ? 'VERIFIED' : 'NONE',
+          ngoVerificationStatus: role === 'NGO' ? 'PENDING' : 'NONE',
           organizationName: organizationName || (role === 'NGO' ? name : ''),
           location,
           isBlocked: false,
@@ -290,7 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authorizedRoles: Array.from(currentAuthorized),
       organizationName: orgName || userProfile.organizationName || userProfile.name,
       location: distributionLocation || userProfile.location,
-      ngoVerificationStatus: 'VERIFIED', // Verified as authorized receiver in network
+      ngoVerificationStatus: userProfile.ngoVerificationStatus === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
     };
 
     await updateUserProfile(userProfile.uid, updates);

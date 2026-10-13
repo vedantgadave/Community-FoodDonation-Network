@@ -106,7 +106,8 @@ export async function createUserProfile(profile: UserProfile): Promise<void> {
     profile.authorizedRoles = [profile.role];
   }
   if (!profile.ngoVerificationStatus) {
-    profile.ngoVerificationStatus = profile.role === 'NGO' ? 'VERIFIED' : 'NONE';
+    // Registered NGOs start in PENDING verification until approved by an administrator
+    profile.ngoVerificationStatus = profile.role === 'NGO' ? 'PENDING' : 'NONE';
   }
 
   if (isDemoMode || !db) {
@@ -165,4 +166,12 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 
 export async function toggleBlockUser(uid: string, isBlocked: boolean): Promise<void> {
   await updateUserProfile(uid, { isBlocked });
+}
+
+
+export async function updateNgoVerificationStatus(
+  uid: string,
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED'
+): Promise<void> {
+  await updateUserProfile(uid, { ngoVerificationStatus: status });
 }

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, toggleBlockUser } from '../../services/userService';
+import { getAllUsers, toggleBlockUser, updateNgoVerificationStatus } from '../../services/userService';
 import type { UserProfile, UserRole } from '../../types';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { useToast } from '../../context/ToastContext';
-import { Search, ShieldAlert, UserX, UserCheck, Users } from 'lucide-react';
+import { Search, ShieldAlert, UserX, UserCheck, Users, ShieldCheck } from 'lucide-react';
 
 export const AdminUsersPage: React.FC = () => {
   const { showToast } = useToast();
@@ -29,6 +29,19 @@ export const AdminUsersPage: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const handleUpdateVerification = async (user: UserProfile, status: 'VERIFIED' | 'REJECTED') => {
+    setActionLoading(true);
+    try {
+      await updateNgoVerificationStatus(user.uid, status);
+      showToast(`NGO verification status updated to ${status}.`, 'success');
+      fetchUsers();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update verification status', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleConfirmToggleBlock = async () => {
     if (!selectedUser) return;
@@ -114,7 +127,7 @@ export const AdminUsersPage: React.FC = () => {
                   <th className="py-3.5 px-4">Role</th>
                   <th className="py-3.5 px-4">Organization / Location</th>
                   <th className="py-3.5 px-4">Contact</th>
-                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4">Verification</th>\n                  <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4 text-right">Moderation</th>
                 </tr>
               </thead>
@@ -149,6 +162,41 @@ export const AdminUsersPage: React.FC = () => {
                       {u.phone}
                     </td>
 
+                    <td className="py-3.5 px-4">
+                      {u.role === 'NGO' ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            u.ngoVerificationStatus === 'VERIFIED'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : u.ngoVerificationStatus === 'REJECTED'
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          }`}>
+                            {u.ngoVerificationStatus || 'PENDING'}
+                          </span>
+                          {u.ngoVerificationStatus !== 'VERIFIED' && (
+                            <button
+                              onClick={() => handleUpdateVerification(u, 'VERIFIED')}
+                              disabled={actionLoading}
+                              className="text-[10px] font-bold text-teal-600 hover:underline flex items-center gap-0.5"
+                            >
+                              <ShieldCheck className="w-3 h-3" /> Approve
+                            </button>
+                          )}
+                          {u.ngoVerificationStatus !== 'REJECTED' && u.ngoVerificationStatus !== 'VERIFIED' && (
+                            <button
+                              onClick={() => handleUpdateVerification(u, 'REJECTED')}
+                              disabled={actionLoading}
+                              className="text-[10px] font-bold text-rose-500 hover:underline"
+                            >
+                              Reject
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-mono">N/A</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4">
                       {u.isBlocked ? (
                         <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-bold rounded-full text-[10px]">
