@@ -41,6 +41,12 @@ service cloud.firestore {
       
       // Only admin can delete user profiles
       allow delete: if isAdmin();
+
+      // Subcollection for secure user FCM device tokens
+      match /fcmTokens/{tokenId} {
+        // Only the token owner can read, register, or delete their device token
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
 
     // Donations Collection

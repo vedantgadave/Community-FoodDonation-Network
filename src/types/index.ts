@@ -2,6 +2,12 @@ export type UserRole = 'DONOR' | 'NGO' | 'ADMIN';
 
 export type NgoVerificationStatus = 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
 
+export interface NotificationPreferences {
+  newDonations: boolean; // Opt-in for instant surplus food alerts
+  statusUpdates: boolean; // Status lifecycle alerts
+  soundEnabled?: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   name: string;
@@ -13,6 +19,8 @@ export interface UserProfile {
   organizationName?: string;
   location: string;
   isBlocked: boolean;
+  notificationPreferences?: NotificationPreferences;
+  fcmTokens?: string[]; // Registered FCM device tokens
   createdAt: string; // ISO string or formatted timestamp
   updatedAt: string;
 }

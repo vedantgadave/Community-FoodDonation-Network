@@ -91,3 +91,56 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ==========================================
+// PUSH NOTIFICATION & NOTIFICATION CLICK HANDLING
+// ==========================================
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: '🍱 New Food Donation Alert', body: event.data ? event.data.text() : 'A new donation is available!' };
+  }
+
+  const title = data.notification?.title || data.title || '🍱 New Food Donation Available!';
+  const body = data.notification?.body || data.body || 'A new surplus food donation is ready for rescue.';
+  const donationId = data.data?.donationId || data.donationId;
+  const targetUrl = data.data?.url || data.url || (donationId ? '/ngo/donations/' + donationId : '/ngo/donations');
+
+  const options = {
+    body: body,
+    icon: '/icons/icon-192.png',
+    badge: '/favicon.svg',
+    tag: donationId ? 'cfdn-donation-' + donationId : 'cfdn-alert',
+    renotify: true,
+    data: {
+      url: targetUrl,
+      donationId: donationId
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/ngo/donations';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          if (client.url.includes('/ngo/donations') || client.url.includes(location.origin)) {
+            client.navigate(targetUrl);
+            return client.focus();
+          }
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});

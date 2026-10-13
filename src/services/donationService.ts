@@ -1,3 +1,4 @@
+import { notifyEligibleNgosOfNewDonation } from './notificationService';
 import {
   collection,
   doc,
@@ -197,6 +198,11 @@ export async function createDonation(
 
     const ref = doc(db, 'donations', id);
     await setDoc(ref, firestorePayload);
+    
+    // Feature 8: Trigger push notifications & real-time alerts ONLY after successful Firestore save
+    notifyEligibleNgosOfNewDonation(newDonation).catch(err => {
+      console.warn('Background notification dispatch non-blocking error:', err);
+    });
   } catch (err) {
     console.warn('Firestore write failed, using local offline fallback:', err);
   }
