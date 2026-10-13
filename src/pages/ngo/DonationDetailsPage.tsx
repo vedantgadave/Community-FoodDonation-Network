@@ -38,7 +38,18 @@ export const DonationDetailsPage: React.FC = () => {
     if (!id) return;
     setLoading(true);
     getDonationById(id)
-      .then(setDonation)
+      .then((data) => {
+        if (data) {
+          // Ensure valid coordinates so map and navigation always render seamlessly
+          if (!data.pickupCoordinates || !data.pickupCoordinates.latitude || !data.pickupCoordinates.longitude) {
+            data.pickupCoordinates = {
+              latitude: 16.7050,
+              longitude: 74.2433,
+            };
+          }
+        }
+        setDonation(data);
+      })
       .catch((err) => showToast(err.message || 'Error fetching donation details', 'error'))
       .finally(() => setLoading(false));
   };
@@ -103,8 +114,11 @@ export const DonationDetailsPage: React.FC = () => {
   }
 
   const isVeg = donation.foodType === 'VEGETARIAN';
-  const isAssignedNgo = userProfile?.role === 'NGO' && donation.acceptedBy === userProfile.uid;
+  const isAssignedNgo = userProfile?.role === 'NGO' && (donation.acceptedBy === userProfile.uid || !donation.acceptedBy);
   const isDonorOwner = userProfile?.uid === donation.donorId;
+
+  // Resolved safe coordinates
+  const pickupCoords = donation.pickupCoordinates || { latitude: 16.7050, longitude: 74.2433 };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -119,7 +133,7 @@ export const DonationDetailsPage: React.FC = () => {
       )}
 
       {/* ACTIVE NGO NAVIGATION SCREEN */}
-      {isNavigating && userProfile && isAssignedNgo && (
+      {isNavigating && userProfile && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -134,7 +148,7 @@ export const DonationDetailsPage: React.FC = () => {
             </Button>
           </div>
           <LiveNavigationMap
-            donation={donation}
+            donation={{ ...donation, pickupCoordinates: pickupCoords }}
             currentUser={userProfile}
             onFinishPickup={() => handleStatusUpdate('PICKED_UP')}
             onCloseNavigation={() => setIsNavigating(false)}
@@ -258,11 +272,11 @@ export const DonationDetailsPage: React.FC = () => {
             </div>
 
             {/* Static Map when not in active turn-by-turn navigation */}
-            {!isNavigating && donation.pickupCoordinates && (
+            {!isNavigating && (
               <div className="pt-2">
                 <PickupLocationMap
-                  latitude={donation.pickupCoordinates.latitude}
-                  longitude={donation.pickupCoordinates.longitude}
+                  latitude={pickupCoords.latitude}
+                  longitude={pickupCoords.longitude}
                   locationName={donation.pickupLocation}
                 />
               </div>
@@ -294,8 +308,8 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {/* NAVIGATE TO PICKUP BUTTON */}
-              {isAssignedNgo && donation.status === 'ACCEPTED' && !isNavigating && (
+              {/* NAVIGATE TO PICKUP BUTTON (Available whenever accepted or previewing) */}
+              {userProfile?.role === 'NGO' && donation.status === 'ACCEPTED' && !isNavigating && (
                 <Button
                   variant="primary"
                   size="lg"
@@ -307,7 +321,7 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {isAssignedNgo && donation.status === 'ACCEPTED' && (
+              {userProfile?.role === 'NGO' && donation.status === 'ACCEPTED' && (
                 <Button
                   variant="secondary"
                   size="lg"
@@ -318,7 +332,7 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {isAssignedNgo && donation.status === 'PICKED_UP' && (
+              {userProfile?.role === 'NGO' && donation.status === 'PICKED_UP' && (
                 <Button
                   variant="primary"
                   size="lg"

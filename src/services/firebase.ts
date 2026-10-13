@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, type Firestore } from 'firebase/firestore';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
 const getEnv = () => {
@@ -31,7 +31,19 @@ export const isDemoMode = env.VITE_ENABLE_DEMO_MODE === 'true';
 // Initialize Firebase SDK cleanly
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+
+// Use initializeFirestore with experimentalAutoDetectLongPolling & experimentalForceLongPolling fallback
+// to prevent WebChannel / BloomFilter proxy stream timeouts on restricted networks
+export const db: Firestore = (() => {
+  try {
+    return initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      ignoreUndefinedProperties: true,
+    });
+  } catch {
+    return getFirestore(app);
+  }
+})();
 
 export let analytics: Analytics | null = null;
 if (typeof window !== 'undefined') {

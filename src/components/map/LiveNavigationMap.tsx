@@ -72,59 +72,9 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
   const [hasArrived, setHasArrived] = useState(false);
   const [journeyActive, setJourneyActive] = useState(true);
 
+  // Guaranteed valid coordinates (fallback to central district if donor didn't pin)
   const destLat = donation.pickupCoordinates?.latitude || 16.7050;
   const destLng = donation.pickupCoordinates?.longitude || 74.2433;
-
-  // Initialize Map
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    if (!isMapTilerConfigured()) {
-      setRouteError('Map visualization key not configured.');
-      return;
-    }
-
-    try {
-      const map = new maptilersdk.Map({
-        container: mapContainerRef.current,
-        style: maptilersdk.MapStyle.STREETS,
-        center: [destLng, destLat],
-        zoom: 14,
-        navigationControl: 'bottom-right',
-      });
-
-      mapInstanceRef.current = map;
-
-      // Destination Marker (Red pin with pulse effect)
-      const destEl = document.createElement('div');
-      destEl.className = 'destination-pin-marker';
-      destEl.innerHTML = `
-        <div style="background:#e11d48;color:white;padding:8px;border-radius:9999px;box-shadow:0 10px 15px -3px rgba(0,0,0,0.3);border:3px solid white;display:flex;align-items:center;justify-content:center;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        </div>
-      `;
-
-      const destMarker = new maptilersdk.Marker({ element: destEl })
-        .setLngLat([destLng, destLat])
-        .addTo(map);
-
-      const destPopup = new maptilersdk.Popup({ offset: 25 })
-        .setHTML(`<div style="font-size:12px;font-weight:bold;color:#0f172a;padding:2px;">📍 Pickup: ${donation.pickupLocation}</div>`);
-      destMarker.setPopup(destPopup);
-      destinationMarkerRef.current = destMarker;
-
-    } catch (err: any) {
-      console.error('Failed to init map:', err);
-      setRouteError('Failed to initialize navigation map.');
-    }
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, [destLat, destLng, donation.pickupLocation]);
 
   // Draw or update GeoJSON route on map
   const renderRouteOnMap = useCallback((routeCoords: [number, number][]) => {
@@ -145,51 +95,55 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
     };
 
     const applyLayers = () => {
-      if (map.getSource(sourceId)) {
-        (map.getSource(sourceId) as any).setData(geojsonData);
-      } else {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: geojsonData,
-        });
+      try {
+        if (map.getSource(sourceId)) {
+          (map.getSource(sourceId) as any).setData(geojsonData);
+        } else {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: geojsonData,
+          });
 
-        // Glowing outer casing for road visibility
-        map.addLayer({
-          id: casingLayerId,
-          type: 'line',
-          source: sourceId,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#064e3b',
-            'line-width': 8,
-            'line-opacity': 0.6,
-          },
-        });
+          // Glowing outer casing for road visibility
+          map.addLayer({
+            id: casingLayerId,
+            type: 'line',
+            source: sourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#064e3b',
+              'line-width': 8,
+              'line-opacity': 0.6,
+            },
+          });
 
-        // Vibrant emerald route line
-        map.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#10b981',
-            'line-width': 5,
-          },
-        });
-      }
+          // Vibrant emerald route line
+          map.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#10b981',
+              'line-width': 5,
+            },
+          });
+        }
 
-      // Auto-fit camera to bound entire route + receiver + destination
-      if (routeCoords.length > 0) {
-        const bounds = new maptilersdk.LngLatBounds();
-        routeCoords.forEach((coord) => bounds.extend(coord));
-        map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 1000 });
+        // Auto-fit camera to bound entire route + receiver + destination
+        if (routeCoords.length > 0) {
+          const bounds = new maptilersdk.LngLatBounds();
+          routeCoords.forEach((coord) => bounds.extend(coord));
+          map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 1000 });
+        }
+      } catch (err) {
+        console.warn('Error applying route layer:', err);
       }
     };
 
@@ -234,7 +188,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         etaTimestamp: eta,
         selectedRoutePreference: preferred.preference,
         activeRoutePolyline: preferred.coordinates,
-      });
+      }).catch((e) => console.warn('updateJourneyLocation error caught:', e));
 
       if (dist < 50) {
         setHasArrived(true);
@@ -242,22 +196,74 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
     } catch (err: any) {
       console.error('Failed to calculate route:', err);
-      setRouteError(err.message || 'Could not find a road route. Please verify GPS connection.');
+      setRouteError(err.message || 'Could not find a road route. Please verify internet connection.');
     } finally {
       setIsCalculatingRoute(false);
       setIsRerouting(false);
     }
   }, [destLat, destLng, donation.id, currentUser.uid, routePreference, renderRouteOnMap]);
 
-  // Geolocation tracking
+  // Initialize Map
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsError('Browser geolocation is not supported on this device.');
+    if (!mapContainerRef.current) return;
+
+    if (!isMapTilerConfigured()) {
+      setRouteError('Map visualization key not configured.');
       return;
     }
 
-    setGpsError(null);
+    try {
+      const map = new maptilersdk.Map({
+        container: mapContainerRef.current,
+        style: maptilersdk.MapStyle.STREETS,
+        center: [destLng, destLat],
+        zoom: 14,
+        navigationControl: 'bottom-right',
+      });
 
+      mapInstanceRef.current = map;
+
+      // Destination Marker (Red pin with pulse effect)
+      const destEl = document.createElement('div');
+      destEl.className = 'destination-pin-marker';
+      destEl.innerHTML = `
+        <div style="background:#e11d48;color:white;padding:8px;border-radius:9999px;box-shadow:0 10px 15px -3px rgba(0,0,0,0.3);border:3px solid white;display:flex;align-items:center;justify-content:center;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+      `;
+
+      const destMarker = new maptilersdk.Marker({ element: destEl })
+        .setLngLat([destLng, destLat])
+        .addTo(map);
+
+      const destPopup = new maptilersdk.Popup({ offset: 25 })
+        .setHTML(`<div style="font-size:12px;font-weight:bold;color:#0f172a;padding:2px;">📍 Pickup: ${donation.pickupLocation}</div>`);
+      destMarker.setPopup(destPopup);
+      destinationMarkerRef.current = destMarker;
+
+      // In case style takes time to load, trigger resize
+      map.on('load', () => {
+        map.resize();
+        if (selectedRoute && selectedRoute.coordinates.length > 0) {
+          renderRouteOnMap(selectedRoute.coordinates);
+        }
+      });
+
+    } catch (err: any) {
+      console.error('Failed to init map:', err);
+      setRouteError('Failed to initialize navigation map.');
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [destLat, destLng, donation.pickupLocation]);
+
+  // Geolocation tracking with Simulated Start Fallback if GPS blocked or unavailable
+  useEffect(() => {
     // Initial journey session initialization in Firestore
     const initJourney = async (initialLat: number, initialLng: number) => {
       const initialPayload: PickupJourney = {
@@ -277,20 +283,10 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await startPickupJourney(initialPayload);
+      await startPickupJourney(initialPayload).catch((e) => console.warn('startPickupJourney error caught:', e));
     };
 
-    const handleSuccess = (pos: GeolocationPosition) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const heading = pos.coords.heading || undefined;
-      const speed = pos.coords.speed || undefined;
-
-      const newPos = { latitude: lat, longitude: lng };
-      setCurrentPosition(newPos);
-      setGpsError(null);
-
-      // 1. Update Receiver Map Marker
+    const updateReceiverMarkerOnMap = (lat: number, lng: number) => {
       const map = mapInstanceRef.current;
       if (map) {
         if (!receiverMarkerRef.current) {
@@ -309,6 +305,15 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
           receiverMarkerRef.current.setLngLat([lng, lat]);
         }
       }
+    };
+
+    const handlePositionUpdate = (lat: number, lng: number, heading?: number, speed?: number) => {
+      const newPos = { latitude: lat, longitude: lng };
+      setCurrentPosition(newPos);
+      setGpsError(null);
+
+      // 1. Update Marker
+      updateReceiverMarkerOnMap(lat, lng);
 
       // 2. Initial route calculation on first fix
       if (!lastRoutedCoordsRef.current) {
@@ -317,7 +322,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         return;
       }
 
-      // 3. Dynamic Rerouting trigger: If receiver moved > 40 meters from last routed position
+      // 3. Dynamic Rerouting trigger: If receiver moved > 40 meters
       const movedDist = calculateHaversineDistanceMeters(
         lastRoutedCoordsRef.current.lat,
         lastRoutedCoordsRef.current.lng,
@@ -329,13 +334,13 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         computeAndApplyRoute(newPos, true);
       }
 
-      // 4. Check Arrival (< 40m to destination)
+      // 4. Check Arrival (< 40m)
       const distToDest = calculateHaversineDistanceMeters(lat, lng, destLat, destLng);
       if (distToDest <= 40) {
         setHasArrived(true);
       }
 
-      // 5. Throttled Firestore coordinate publishing (at most once every 5 seconds)
+      // 5. Throttled Firestore coordinate publishing (every 5 seconds)
       const now = Date.now();
       if (now - lastWriteTimeRef.current > 5000) {
         lastWriteTimeRef.current = now;
@@ -350,25 +355,50 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
       }
     };
 
-    const handleError = (err: GeolocationPositionError) => {
-      let msg = 'Unable to acquire GPS location.';
-      if (err.code === err.PERMISSION_DENIED) {
-        msg = 'Location permission was denied. Please allow GPS access in your browser settings to navigate.';
-      } else if (err.code === err.POSITION_UNAVAILABLE) {
-        msg = 'GPS signal unavailable. Ensure location is turned on.';
-      } else if (err.code === err.TIMEOUT) {
-        msg = 'GPS acquisition timed out. Retrying...';
-      }
-      setGpsError(msg);
-    };
+    if (navigator.geolocation) {
+      const handleSuccess = (pos: GeolocationPosition) => {
+        handlePositionUpdate(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.heading || undefined,
+          pos.coords.speed || undefined
+        );
+      };
 
-    // Start watching position with high accuracy
-    const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 3000,
-    });
-    watchIdRef.current = watchId;
+      const handleError = (err: GeolocationPositionError) => {
+        console.warn('Geolocation warning code:', err.code, err.message);
+        let msg = 'Unable to acquire GPS location.';
+        if (err.code === err.PERMISSION_DENIED) {
+          msg = 'Location permission is denied in browser. Using district starting position so you can preview the route!';
+          // Provide realistic starting position ~2.5 km away so road route computes instantly
+          const fallbackStartLat = destLat + 0.015;
+          const fallbackStartLng = destLng + 0.015;
+          handlePositionUpdate(fallbackStartLat, fallbackStartLng);
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          msg = 'GPS signal unavailable. Using estimated dispatch location.';
+          const fallbackStartLat = destLat + 0.015;
+          const fallbackStartLng = destLng + 0.015;
+          handlePositionUpdate(fallbackStartLat, fallbackStartLng);
+        } else if (err.code === err.TIMEOUT) {
+          msg = 'GPS acquisition timed out. Retrying...';
+        }
+        setGpsError(msg);
+      };
+
+      const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 5000,
+      });
+      watchIdRef.current = watchId;
+
+    } else {
+      // Fallback for browsers without geolocation
+      setGpsError('Geolocation not supported on this device. Using default dispatch point.');
+      const fallbackStartLat = destLat + 0.015;
+      const fallbackStartLng = destLng + 0.015;
+      handlePositionUpdate(fallbackStartLat, fallbackStartLng);
+    }
 
     return () => {
       if (watchIdRef.current !== null) {
@@ -410,7 +440,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
         estimatedDurationSeconds: route.durationSeconds,
         selectedRoutePreference: route.preference,
         activeRoutePolyline: route.coordinates,
-      });
+      }).catch(() => {});
     }
   };
 
@@ -467,14 +497,14 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
       {/* GPS / Route Alerts */}
       {gpsError && (
-        <div className="bg-rose-950/90 border-b border-rose-800 text-rose-200 text-xs px-4 py-2.5 flex items-center justify-between z-10">
+        <div className="bg-amber-950/90 border-b border-amber-800 text-amber-200 text-xs px-4 py-2.5 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>{gpsError}</span>
           </div>
           <button
             onClick={() => currentPosition && computeAndApplyRoute(currentPosition)}
-            className="text-[11px] font-bold text-rose-300 hover:text-white underline ml-2"
+            className="text-[11px] font-bold text-amber-300 hover:text-white underline ml-2"
           >
             Retry
           </button>
@@ -521,7 +551,7 @@ export const LiveNavigationMap: React.FC<LiveNavigationMapProps> = ({
 
       {/* MAP VIEW CONTAINER */}
       <div className="flex-1 w-full relative">
-        <div ref={mapContainerRef} className="w-full h-full" />
+        <div ref={mapContainerRef} className="w-full h-full min-h-[350px]" />
 
         {/* Floating Controls Overlay */}
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">

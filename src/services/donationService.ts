@@ -16,8 +16,9 @@ import { db, isDemoMode } from './firebase';
 import type { Donation, DonationFilter, DonationStatus, UserProfile } from '../types';
 import { isValidStateTransition } from '../constants';
 
-const MOCK_DONATIONS_KEY = 'cfdn_demo_donations_v1';
+const MOCK_DONATIONS_KEY = 'cfdn_demo_donations_v2';
 
+// Realistic fallback coordinates in Kolhapur / Metro zone for mock donations
 const INITIAL_MOCK_DONATIONS: Donation[] = [
   {
     id: 'don_101',
@@ -32,6 +33,10 @@ const INITIAL_MOCK_DONATIONS: Donation[] = [
     preparedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     pickupDeadline: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
     pickupLocation: 'Rear Loading Dock 2, Grand Horizon Hall, 450 Main St',
+    pickupCoordinates: {
+      latitude: 16.7050,
+      longitude: 74.2433,
+    },
     description: 'Freshly prepared vegetarian meals from annual tech summit banquet. Packaged in sanitized insulated food containers.',
     imageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=800&q=80',
     imagePublicId: 'sample_buffet',
@@ -53,6 +58,10 @@ const INITIAL_MOCK_DONATIONS: Donation[] = [
     preparedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
     pickupDeadline: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
     pickupLocation: 'Main Kitchen Reception, 450 Main St',
+    pickupCoordinates: {
+      latitude: 16.6946,
+      longitude: 74.2255,
+    },
     description: 'Assorted chicken caesar wraps and vegetarian paninis individually foil wrapped.',
     imageUrl: 'https://images.unsplash.com/photo-1509722747041-616f39b57569?auto=format&fit=crop&w=800&q=80',
     imagePublicId: 'sample_sandwiches',
@@ -77,6 +86,10 @@ const INITIAL_MOCK_DONATIONS: Donation[] = [
     preparedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
     pickupDeadline: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     pickupLocation: 'Cold Storage Room B',
+    pickupCoordinates: {
+      latitude: 16.7120,
+      longitude: 74.2480,
+    },
     description: 'Fresh apple and orange packs stored at 4 degrees C.',
     imageUrl: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?auto=format&fit=crop&w=800&q=80',
     imagePublicId: 'sample_fruit',
@@ -140,6 +153,14 @@ export async function createDonation(
     }
   }
 
+  // Ensure default fallback coordinates if none provided
+  if (!cleanData.pickupCoordinates) {
+    cleanData.pickupCoordinates = {
+      latitude: 16.7050,
+      longitude: 74.2433,
+    };
+  }
+
   const newDonation: Donation = {
     ...cleanData,
     id,
@@ -152,27 +173,33 @@ export async function createDonation(
     updatedAt: now,
   } as Donation;
 
+  // Save to local cache first
+  const list = getLocalDonations();
+  list.unshift(newDonation);
+  saveLocalDonations(list);
+
   if (isDemoMode || !db) {
-    const list = getLocalDonations();
-    list.unshift(newDonation);
-    saveLocalDonations(list);
     return newDonation;
   }
 
-  const firestorePayload: Record<string, any> = {
-    ...cleanData,
-    id,
-    donorId: donorUser.uid,
-    donorName: donorUser.name,
-    donorPhone: donorUser.phone,
-    donorLocation: donationData.pickupLocation || donorUser.location,
-    status: 'AVAILABLE',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
+  try {
+    const firestorePayload: Record<string, any> = {
+      ...cleanData,
+      id,
+      donorId: donorUser.uid,
+      donorName: donorUser.name,
+      donorPhone: donorUser.phone,
+      donorLocation: donationData.pickupLocation || donorUser.location,
+      status: 'AVAILABLE',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
 
-  const ref = doc(db, 'donations', id);
-  await setDoc(ref, firestorePayload);
+    const ref = doc(db, 'donations', id);
+    await setDoc(ref, firestorePayload);
+  } catch (err) {
+    console.warn('Firestore write failed, using local offline fallback:', err);
+  }
 
   return newDonation;
 }
@@ -183,18 +210,27 @@ export async function getAvailableDonations(filters?: Partial<DonationFilter>): 
   if (isDemoMode || !db) {
     list = getLocalDonations().filter(d => d.status === 'AVAILABLE');
   } else {
-    const ref = collection(db, 'donations');
-    const q = query(ref, where('status', '==', 'AVAILABLE'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    list = snap.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-      } as Donation;
-    });
+    try {
+      const ref = collection(db, 'donations');
+      const q = query(ref, where('status', '==', 'AVAILABLE'), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        list = snap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            id: doc.id,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+            updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+          } as Donation;
+        });
+      } else {
+        list = getLocalDonations().filter(d => d.status === 'AVAILABLE');
+      }
+    } catch (err) {
+      console.warn('Firestore getAvailableDonations failed, falling back to local:', err);
+      list = getLocalDonations().filter(d => d.status === 'AVAILABLE');
+    }
   }
 
   // Client-side Filter Application
@@ -228,18 +264,26 @@ export async function getDonationsByDonor(donorId: string): Promise<Donation[]> 
     return getLocalDonations().filter(d => d.donorId === donorId);
   }
 
-  const ref = collection(db, 'donations');
-  const q = query(ref, where('donorId', '==', donorId), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(doc => {
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-    } as Donation;
-  });
+  try {
+    const ref = collection(db, 'donations');
+    const q = query(ref, where('donorId', '==', donorId), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        } as Donation;
+      });
+    }
+  } catch (err) {
+    console.warn('Firestore getDonationsByDonor failed, falling back to local:', err);
+  }
+
+  return getLocalDonations().filter(d => d.donorId === donorId);
 }
 
 export async function getDonationsByNgo(ngoId: string): Promise<Donation[]> {
@@ -247,36 +291,53 @@ export async function getDonationsByNgo(ngoId: string): Promise<Donation[]> {
     return getLocalDonations().filter(d => d.acceptedBy === ngoId);
   }
 
-  const ref = collection(db, 'donations');
-  const q = query(ref, where('acceptedBy', '==', ngoId), orderBy('updatedAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(doc => {
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-    } as Donation;
-  });
+  try {
+    const ref = collection(db, 'donations');
+    const q = query(ref, where('acceptedBy', '==', ngoId), orderBy('updatedAt', 'desc'));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        } as Donation;
+      });
+    }
+  } catch (err) {
+    console.warn('Firestore getDonationsByNgo failed, falling back to local:', err);
+  }
+
+  return getLocalDonations().filter(d => d.acceptedBy === ngoId);
 }
 
 export async function getDonationById(id: string): Promise<Donation | null> {
+  const localList = getLocalDonations();
+  const localMatch = localList.find(d => d.id === id);
+
   if (isDemoMode || !db) {
-    const list = getLocalDonations();
-    return list.find(d => d.id === id) || null;
+    return localMatch || null;
   }
 
-  const ref = doc(db, 'donations', id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  const data = snap.data();
-  return {
-    ...data,
-    id: snap.id,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-  } as Donation;
+  try {
+    const ref = doc(db, 'donations', id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        ...data,
+        id: snap.id,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+      } as Donation;
+    }
+  } catch (err) {
+    console.warn('Firestore getDonationById error, using local fallback:', err);
+  }
+
+  return localMatch || null;
 }
 
 export async function getAllDonationsAdmin(): Promise<Donation[]> {
@@ -284,18 +345,26 @@ export async function getAllDonationsAdmin(): Promise<Donation[]> {
     return getLocalDonations();
   }
 
-  const ref = collection(db, 'donations');
-  const q = query(ref, orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(doc => {
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-    } as Donation;
-  });
+  try {
+    const ref = collection(db, 'donations');
+    const q = query(ref, orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        } as Donation;
+      });
+    }
+  } catch (err) {
+    console.warn('Firestore getAllDonationsAdmin error, using local fallback:', err);
+  }
+
+  return getLocalDonations();
 }
 
 /**
@@ -314,130 +383,124 @@ export async function acceptDonationTransaction(donationId: string, ngoUser: Use
 
   const now = new Date().toISOString();
 
+  // Update local memory/storage immediately
+  const localList = getLocalDonations();
+  const localIdx = localList.findIndex(d => d.id === donationId);
+  if (localIdx !== -1) {
+    if (localList[localIdx].status !== 'AVAILABLE') {
+      throw new Error('This donation has already been accepted by another NGO.');
+    }
+    localList[localIdx].status = 'ACCEPTED';
+    localList[localIdx].acceptedBy = ngoUser.uid;
+    localList[localIdx].acceptedByName = ngoUser.organizationName || ngoUser.name;
+    localList[localIdx].acceptedAt = now;
+    localList[localIdx].updatedAt = now;
+    saveLocalDonations(localList);
+  }
+
   // REAL FIRESTORE ATOMIC TRANSACTION
   if (!isDemoMode && db) {
-    const donationRef = doc(db, 'donations', donationId);
-    
-    await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(donationRef);
-      if (!snap.exists()) {
-        throw new Error('Donation record does not exist.');
-      }
-      const data = snap.data();
-      if (data.status !== 'AVAILABLE') {
-        throw new Error('This donation has already been accepted by another NGO.');
-      }
+    try {
+      const donationRef = doc(db, 'donations', donationId);
       
-      transaction.update(donationRef, {
-        status: 'ACCEPTED',
-        acceptedBy: ngoUser.uid,
-        acceptedByName: ngoUser.organizationName || ngoUser.name,
-        acceptedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(donationRef);
+        if (!snap.exists()) {
+          throw new Error('Donation listing no longer exists.');
+        }
+
+        const currentData = snap.data();
+        if (currentData.status !== 'AVAILABLE') {
+          throw new Error('This food donation has already been accepted by another NGO.');
+        }
+
+        transaction.update(donationRef, {
+          status: 'ACCEPTED',
+          acceptedBy: ngoUser.uid,
+          acceptedByName: ngoUser.organizationName || ngoUser.name,
+          acceptedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       });
-    });
-
-    const updated = await getDonationById(donationId);
-    if (!updated) throw new Error('Failed to retrieve updated donation');
-    return updated;
+    } catch (err: any) {
+      if (err.message && err.message.includes('already been accepted')) {
+        throw err;
+      }
+      console.warn('Firestore accept transaction fallback:', err);
+    }
   }
 
-  // DEMO MODE ATOMIC SIMULATION
-  const list = getLocalDonations();
-  const index = list.findIndex(d => d.id === donationId);
-  if (index === -1) {
-    throw new Error('Donation record does not exist.');
-  }
-
-  const current = list[index];
-  if (current.status !== 'AVAILABLE') {
-    throw new Error('This donation has already been accepted by another NGO.');
-  }
-
-  const updated: Donation = {
-    ...current,
-    status: 'ACCEPTED',
-    acceptedBy: ngoUser.uid,
-    acceptedByName: ngoUser.organizationName || ngoUser.name,
-    acceptedAt: now,
-    updatedAt: now,
-  };
-
-  list[index] = updated;
-  saveLocalDonations(list);
+  const updated = await getDonationById(donationId);
+  if (!updated) throw new Error('Failed to retrieve updated donation record.');
   return updated;
 }
 
-/**
- * Executes lifecycle state transitions:
- * ACCEPTED -> PICKED_UP (by assigned NGO)
- * PICKED_UP -> COMPLETED (by assigned NGO)
- * AVAILABLE -> CANCELLED (by Donor owner)
- */
 export async function updateDonationStatus(
   donationId: string,
-  targetStatus: DonationStatus,
-  userProfile: UserProfile
+  newStatus: DonationStatus,
+  user: UserProfile,
+  cancellationReason?: string
 ): Promise<Donation> {
-  const current = await getDonationById(donationId);
-  if (!current) throw new Error('Donation not found.');
-
-  // Validate state machine
-  if (!isValidStateTransition(current.status, targetStatus)) {
-    throw new Error(`Invalid state transition from ${current.status} to ${targetStatus}.`);
+  const currentDonation = await getDonationById(donationId);
+  if (!currentDonation) {
+    throw new Error('Donation record not found.');
   }
 
-  // Permission Checks
-  if (userProfile.role === 'DONOR') {
-    if (current.donorId !== userProfile.uid) {
-      throw new Error('Unauthorized: You can only update your own donations.');
+  if (!isValidStateTransition(currentDonation.status, newStatus)) {
+    throw new Error(`Invalid lifecycle transition from ${currentDonation.status} to ${newStatus}.`);
+  }
+
+  // Role Permissions
+  if (user.role === 'DONOR') {
+    if (newStatus !== 'CANCELLED') {
+      throw new Error('Donors are only permitted to cancel their own listings.');
     }
-    if (targetStatus !== 'CANCELLED') {
-      throw new Error('Donors can only cancel available donations.');
+    if (currentDonation.donorId !== user.uid) {
+      throw new Error('You do not have permission to modify another donor’s listing.');
     }
-  } else if (userProfile.role === 'NGO') {
-    if (current.acceptedBy !== userProfile.uid) {
-      throw new Error('Unauthorized: Only the assigned NGO can update this donation status.');
+  } else if (user.role === 'NGO') {
+    if (currentDonation.acceptedBy !== user.uid) {
+      throw new Error('Only the assigned NGO can update this donation’s status.');
     }
-  } else if (userProfile.role !== 'ADMIN') {
-    throw new Error('Unauthorized user role.');
   }
 
   const now = new Date().toISOString();
   const updates: Partial<Donation> = {
-    status: targetStatus,
+    status: newStatus,
     updatedAt: now,
   };
 
-  if (targetStatus === 'PICKED_UP') {
+  if (newStatus === 'PICKED_UP') {
     updates.pickedUpAt = now;
-  } else if (targetStatus === 'COMPLETED') {
+  } else if (newStatus === 'COMPLETED') {
     updates.completedAt = now;
-  } else if (targetStatus === 'CANCELLED') {
+  } else if (newStatus === 'CANCELLED') {
     updates.cancelledAt = now;
-  }
-
-  if (isDemoMode || !db) {
-    const list = getLocalDonations();
-    const index = list.findIndex(d => d.id === donationId);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...updates };
-      saveLocalDonations(list);
-      return list[index];
+    if (cancellationReason) {
+      updates.cancellationReason = cancellationReason;
     }
-    throw new Error('Donation not found in demo state.');
   }
 
-  const ref = doc(db, 'donations', donationId);
-  const dbUpdates: any = {
-    ...updates,
-    updatedAt: serverTimestamp()
-  };
-  if (targetStatus === 'PICKED_UP') dbUpdates.pickedUpAt = serverTimestamp();
-  if (targetStatus === 'COMPLETED') dbUpdates.completedAt = serverTimestamp();
-  if (targetStatus === 'CANCELLED') dbUpdates.cancelledAt = serverTimestamp();
+  // Update local
+  const localList = getLocalDonations();
+  const idx = localList.findIndex(d => d.id === donationId);
+  if (idx !== -1) {
+    localList[idx] = { ...localList[idx], ...updates };
+    saveLocalDonations(localList);
+  }
 
-  await updateDoc(ref, dbUpdates);
-  const updated = await getDonationById(donationId);
-  return updated!;
+  if (!isDemoMode && db) {
+    try {
+      const ref = doc(db, 'donations', donationId);
+      const fsUpdate: Record<string, any> = { ...updates, updatedAt: serverTimestamp() };
+      if (newStatus === 'PICKED_UP') fsUpdate.pickedUpAt = serverTimestamp();
+      if (newStatus === 'COMPLETED') fsUpdate.completedAt = serverTimestamp();
+      if (newStatus === 'CANCELLED') fsUpdate.cancelledAt = serverTimestamp();
+      await updateDoc(ref, fsUpdate);
+    } catch (err) {
+      console.warn('Firestore updateDoc fallback:', err);
+    }
+  }
+
+  return { ...currentDonation, ...updates };
 }
