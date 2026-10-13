@@ -6,6 +6,7 @@ import { DemoBanner } from './components/common/DemoBanner';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { AppRoutes } from './routes/AppRoutes';
+import { PwaInstallPrompt } from './components/common/PwaInstallPrompt';
 
 export const App: React.FC = () => {
   return (
@@ -19,6 +20,8 @@ export const App: React.FC = () => {
               <AppRoutes />
             </main>
             <Footer />
+            {/* PWA Install Promotion Card */}
+            <PwaInstallPrompt />
           </div>
         </ToastProvider>
       </AuthProvider>

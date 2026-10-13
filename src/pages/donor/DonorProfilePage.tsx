@@ -5,6 +5,7 @@ import { updateUserProfile } from '../../services/userService';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { User, Mail, Phone, MapPin, Building, ShieldCheck } from 'lucide-react';
+import { RoleSwitcher } from '../../components/common/RoleSwitcher';
 
 export const DonorProfilePage: React.FC = () => {
   const { userProfile } = useAuth();
@@ -38,8 +39,20 @@ export const DonorProfilePage: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      {/* Role Management Card */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl space-y-4">
+        <h2 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-emerald-600" /> Account Role & Permissions
+        </h2>
+        <p className="text-xs text-slate-600 dark:text-slate-300">
+          Easily switch between donating food and operating as an authorized Receiver/NGO without creating another account.
+        </p>
+        <div className="max-w-xs pt-1">
+          <RoleSwitcher />
+        </div>
+      </div>
+
       <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl space-y-6">
-        
         <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="w-16 h-16 rounded-full bg-emerald-600 text-white font-extrabold flex items-center justify-center text-2xl shadow-md">
             {userProfile?.name.charAt(0).toUpperCase()}
@@ -49,7 +62,7 @@ export const DonorProfilePage: React.FC = () => {
               Donor Profile & Contact Details
             </h1>
             <p className="text-xs text-slate-500 font-mono">
-              Role: <span className="text-emerald-600 font-bold">{userProfile?.role}</span>
+              Active Role: <span className="text-emerald-600 font-bold">{userProfile?.role}</span>
             </p>
           </div>
         </div>

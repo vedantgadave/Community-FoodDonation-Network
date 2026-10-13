@@ -3,14 +3,15 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged,
+  onAuthStateChanged, 
   type User as FirebaseUser 
 } from 'firebase/auth';
 import { auth, isDemoMode } from '../services/firebase';
-import { getUserProfile, createUserProfile } from '../services/userService';
+import { getUserProfile, createUserProfile, updateUserProfile } from '../services/userService';
 import type { UserProfile, UserRole } from '../types';
 
 const DEMO_CURRENT_USER_KEY = 'cfdn_demo_current_uid';
+const ACTIVE_ROLE_OVERRIDE_KEY = 'cfdn_active_role_override';
 
 interface AuthContextValue {
   user: FirebaseUser | null;
@@ -28,6 +29,8 @@ interface AuthContextValue {
   ) => Promise<UserProfile>;
   logout: () => Promise<void>;
   switchDemoUserRole: (role: UserRole) => Promise<void>;
+  switchActiveRole: (newRole: UserRole) => Promise<UserProfile>;
+  requestNgoRole: (orgName: string, distributionLocation: string) => Promise<UserProfile>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -45,6 +48,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (fbUser) {
           try {
             const profile = await getUserProfile(fbUser.uid);
+            if (profile) {
+              // Check if user previously switched to an authorized role in this browser
+              const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${fbUser.uid}`) as UserRole | null;
+              if (
+                storedRole &&
+                storedRole !== 'ADMIN' &&
+                profile.authorizedRoles?.includes(storedRole)
+              ) {
+                profile.role = storedRole;
+              }
+            }
             setUserProfile(profile);
           } catch (err) {
             console.error('Error fetching user profile:', err);
@@ -60,6 +74,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // DEMO MODE Initialization
       const savedUid = localStorage.getItem(DEMO_CURRENT_USER_KEY) || 'donor_1';
       getUserProfile(savedUid).then((profile) => {
+        if (profile) {
+          const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
+          if (
+            storedRole &&
+            storedRole !== 'ADMIN' &&
+            profile.authorizedRoles?.includes(storedRole)
+          ) {
+            profile.role = storedRole;
+          }
+        }
         setUserProfile(profile);
         setLoading(false);
       });
@@ -79,6 +103,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await signOut(auth);
           throw new Error('Your account has been restricted by an administrator.');
         }
+        
+        // Restore role preference if authorized
+        const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
+        if (
+          storedRole &&
+          storedRole !== 'ADMIN' &&
+          profile.authorizedRoles?.includes(storedRole)
+        ) {
+          profile.role = storedRole;
+        }
+
         setUserProfile(profile);
         return profile;
       } else {
@@ -101,12 +136,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (
-    email: string,
-    password: string,
-    name: string,
-    phone: string,
-    role: UserRole,
-    organizationName: string,
+    email: string, 
+    password: string, 
+    name: string, 
+    phone: string, 
+    role: UserRole, 
+    organizationName: string, 
     location: string
   ): Promise<UserProfile> => {
     setLoading(true);
@@ -126,6 +161,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email,
           phone,
           role,
+          authorizedRoles: [role],
+          ngoVerificationStatus: role === 'NGO' ? 'VERIFIED' : 'NONE',
           organizationName: organizationName || (role === 'NGO' ? name : ''),
           location,
           isBlocked: false,
@@ -145,6 +182,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email,
           phone,
           role,
+          authorizedRoles: [role],
+          ngoVerificationStatus: role === 'NGO' ? 'VERIFIED' : 'NONE',
           organizationName: organizationName || (role === 'NGO' ? name : ''),
           location,
           isBlocked: false,
@@ -196,6 +235,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Switch the active operational role between authorized roles (e.g. DONOR <-> NGO).
+   * Strict security checks:
+   * 1. Cannot switch to ADMIN.
+   * 2. Must be an authorized role for this user.
+   * 3. If switching to NGO, user must have NGO authorization or verified status.
+   */
+  const switchActiveRole = async (newRole: UserRole): Promise<UserProfile> => {
+    if (!userProfile) {
+      throw new Error('You must be logged in to switch roles.');
+    }
+
+    if (newRole === 'ADMIN') {
+      throw new Error('Access Denied: Administrative permissions cannot be assumed via role switching.');
+    }
+
+    const currentAuthorized = userProfile.authorizedRoles || [userProfile.role];
+    if (!currentAuthorized.includes(newRole)) {
+      throw new Error(`Your account is not currently authorized as ${newRole}. Please complete the registration or verification flow.`);
+    }
+
+    if (newRole === 'NGO' && userProfile.ngoVerificationStatus === 'REJECTED') {
+      throw new Error('Your NGO verification was rejected. Please contact support.');
+    }
+
+    // Persist to database & localStorage
+    await updateUserProfile(userProfile.uid, { role: newRole });
+    localStorage.setItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${userProfile.uid}`, newRole);
+
+    const updated: UserProfile = {
+      ...userProfile,
+      role: newRole,
+      updatedAt: new Date().toISOString()
+    };
+    setUserProfile(updated);
+    return updated;
+  };
+
+  /**
+   * Onboard/Upgrade a Donor to also have NGO/Receiver authorization
+   */
+  const requestNgoRole = async (orgName: string, distributionLocation: string): Promise<UserProfile> => {
+    if (!userProfile) {
+      throw new Error('You must be logged in to request an NGO role.');
+    }
+
+    const currentAuthorized = new Set(userProfile.authorizedRoles || [userProfile.role]);
+    currentAuthorized.add('NGO');
+    currentAuthorized.add('DONOR'); // ensure both roles are present
+
+    const updates: Partial<UserProfile> = {
+      role: 'NGO',
+      authorizedRoles: Array.from(currentAuthorized),
+      organizationName: orgName || userProfile.organizationName || userProfile.name,
+      location: distributionLocation || userProfile.location,
+      ngoVerificationStatus: 'VERIFIED', // Verified as authorized receiver in network
+    };
+
+    await updateUserProfile(userProfile.uid, updates);
+    localStorage.setItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${userProfile.uid}`, 'NGO');
+
+    const updated: UserProfile = {
+      ...userProfile,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    } as UserProfile;
+
+    setUserProfile(updated);
+    return updated;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -206,6 +316,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         switchDemoUserRole,
+        switchActiveRole,
+        requestNgoRole,
       }}
     >
       {children}

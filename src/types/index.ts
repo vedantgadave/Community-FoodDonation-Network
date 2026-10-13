@@ -1,11 +1,15 @@
 export type UserRole = 'DONOR' | 'NGO' | 'ADMIN';
 
+export type NgoVerificationStatus = 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+
 export interface UserProfile {
   uid: string;
   name: string;
   email: string;
   phone: string;
-  role: UserRole;
+  role: UserRole; // Active operational role
+  authorizedRoles?: UserRole[]; // e.g. ['DONOR', 'NGO']
+  ngoVerificationStatus?: NgoVerificationStatus;
   organizationName?: string;
   location: string;
   isBlocked: boolean;
@@ -44,7 +48,7 @@ export interface Donation {
   imagePublicId?: string;
 
   status: DonationStatus;
-  safetyConfirmed: boolean;
+  safetyConfirmed?: boolean;
 
   acceptedBy?: string; // NGO uid
   acceptedByName?: string;
@@ -53,16 +57,17 @@ export interface Donation {
   pickedUpAt?: string;
   completedAt?: string;
   cancelledAt?: string;
+  cancellationReason?: string;
 
   createdAt: string;
   updatedAt: string;
 }
 
 export interface DonationFilter {
-  search: string;
-  foodType: FoodType | 'ALL';
-  location: string;
-  minQuantity: number;
+  search?: string;
+  foodType?: FoodType | 'ALL';
+  location?: string;
+  minQuantity?: number;
   maxDeadlineHours?: number;
 }
 
