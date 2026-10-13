@@ -4,18 +4,23 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import type { Donation } from '../../types';
 import { getDonationById, acceptDonationTransaction, updateDonationStatus } from '../../services/donationService';
+import { stopPickupJourney } from '../../services/journeyService';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { DonationTimeline } from '../../components/donation/DonationTimeline';
 import { FoodSafetyBanner } from '../../components/common/FoodSafetyBanner';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { PickupLocationMap } from '../../components/map/PickupLocationMap';
+import { LiveNavigationMap } from '../../components/map/LiveNavigationMap';
+import { DonorTrackingCard } from '../../components/donation/DonorTrackingCard';
 import { Button } from '../../components/ui/Button';
 import { 
   ArrowLeft, 
   MapPin, 
   Phone, 
   User, 
-  AlertTriangle
+  AlertTriangle,
+  Navigation,
+  Compass
 } from 'lucide-react';
 
 export const DonationDetailsPage: React.FC = () => {
@@ -27,6 +32,7 @@ export const DonationDetailsPage: React.FC = () => {
   const [donation, setDonation] = useState<Donation | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const fetchDetails = () => {
     if (!id) return;
@@ -64,6 +70,10 @@ export const DonationDetailsPage: React.FC = () => {
     try {
       await updateDonationStatus(donation.id, nextStatus, userProfile);
       showToast(`Donation status updated to ${nextStatus}`, 'success');
+      if (nextStatus === 'PICKED_UP' || nextStatus === 'COMPLETED') {
+        setIsNavigating(false);
+        await stopPickupJourney(donation.id);
+      }
       fetchDetails();
     } catch (err: any) {
       showToast(err.message || 'Failed to update status', 'error');
@@ -93,6 +103,8 @@ export const DonationDetailsPage: React.FC = () => {
   }
 
   const isVeg = donation.foodType === 'VEGETARIAN';
+  const isAssignedNgo = userProfile?.role === 'NGO' && donation.acceptedBy === userProfile.uid;
+  const isDonorOwner = userProfile?.uid === donation.donorId;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -101,6 +113,36 @@ export const DonationDetailsPage: React.FC = () => {
         Back to Listings
       </Button>
 
+      {/* DONOR LIVE TRACKING VIEW (When viewed by the Donor) */}
+      {isDonorOwner && donation.status !== 'AVAILABLE' && (
+        <DonorTrackingCard donation={donation} />
+      )}
+
+      {/* ACTIVE NGO NAVIGATION SCREEN */}
+      {isNavigating && userProfile && isAssignedNgo && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Compass className="w-5 h-5 text-emerald-600 animate-spin" /> Live Road Navigation to Pickup
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsNavigating(false)}
+            >
+              Exit Navigation Mode
+            </Button>
+          </div>
+          <LiveNavigationMap
+            donation={donation}
+            currentUser={userProfile}
+            onFinishPickup={() => handleStatusUpdate('PICKED_UP')}
+            onCloseNavigation={() => setIsNavigating(false)}
+          />
+        </div>
+      )}
+
+      {/* MAIN DONATION DETAILS CARD */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
         
         {/* Banner Image Header */}
@@ -134,59 +176,67 @@ export const DonationDetailsPage: React.FC = () => {
         {/* Content Body */}
         <div className="p-6 sm:p-8 space-y-8">
           
-          {/* Lifecycle Timeline */}
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 mb-4">
-              Donation Lifecycle & Status Progress
-            </h4>
-            <DonationTimeline donation={donation} />
-          </div>
-
-          {/* Key Metric Grid */}
+          {/* Key Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Quantity</span>
-              <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">
+                Quantity Available
+              </span>
+              <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
                 {donation.quantity} {donation.unit}
               </span>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Dietary Type</span>
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">
+                Food Category
+              </span>
               <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                {isVeg ? 'Vegetarian' : 'Non-Vegetarian'}
+                {donation.category || 'General Surplus'}
               </span>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Prepared Time</span>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                {donation.preparedAt ? new Date(donation.preparedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">
+                Prepared At
+              </span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                {new Date(donation.preparedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
               </span>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Pickup Deadline</span>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                {donation.pickupDeadline ? new Date(donation.pickupDeadline).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Flexible'}
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">
+                Pickup Deadline
+              </span>
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                {new Date(donation.pickupDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
               </span>
             </div>
           </div>
 
-          {/* Description & Dock Details */}
+          {/* Description */}
           {donation.description && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                Packaging & Description Notes
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Description & Handling Instructions
               </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
                 {donation.description}
               </p>
             </div>
           )}
 
-          {/* Donor Contact Details & Interactive Pickup Location Map */}
-          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800/40 space-y-4">
+          {/* Lifecycle Timeline */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Donation Lifecycle Progress
+            </h3>
+            <DonationTimeline donation={donation} />
+          </div>
+
+          {/* Donor Contact & Map Area */}
+          <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-900/40 space-y-4">
             <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-2">
               <User className="w-4 h-4 text-emerald-600" /> Donor Contact & Location Info
             </h3>
@@ -207,8 +257,8 @@ export const DonationDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* MapTiler Pickup Location Map (Rendered when pickupCoordinates exist) */}
-            {donation.pickupCoordinates && (
+            {/* Static Map when not in active turn-by-turn navigation */}
+            {!isNavigating && donation.pickupCoordinates && (
               <div className="pt-2">
                 <PickupLocationMap
                   latitude={donation.pickupCoordinates.latitude}
@@ -232,7 +282,7 @@ export const DonationDetailsPage: React.FC = () => {
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {userProfile?.role === 'NGO' && donation.status === 'AVAILABLE' && (
                 <Button
                   variant="primary"
@@ -244,7 +294,20 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {userProfile?.role === 'NGO' && donation.status === 'ACCEPTED' && donation.acceptedBy === userProfile.uid && (
+              {/* NAVIGATE TO PICKUP BUTTON */}
+              {isAssignedNgo && donation.status === 'ACCEPTED' && !isNavigating && (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="bg-emerald-600 hover:bg-emerald-700 font-bold"
+                  leftIcon={<Navigation className="w-4 h-4" />}
+                  onClick={() => setIsNavigating(true)}
+                >
+                  Navigate to Pickup
+                </Button>
+              )}
+
+              {isAssignedNgo && donation.status === 'ACCEPTED' && (
                 <Button
                   variant="secondary"
                   size="lg"
@@ -255,7 +318,7 @@ export const DonationDetailsPage: React.FC = () => {
                 </Button>
               )}
 
-              {userProfile?.role === 'NGO' && donation.status === 'PICKED_UP' && donation.acceptedBy === userProfile.uid && (
+              {isAssignedNgo && donation.status === 'PICKED_UP' && (
                 <Button
                   variant="primary"
                   size="lg"

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { Donation } from '../../types';
 import { getDonationsByDonor } from '../../services/donationService';
 import { DonationCard } from '../../components/donation/DonationCard';
+import { DonorTrackingCard } from '../../components/donation/DonorTrackingCard';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Button } from '../../components/ui/Button';
@@ -33,6 +34,9 @@ export const DonorDashboardPage: React.FC = () => {
     completed: donations.filter((d) => d.status === 'COMPLETED').length,
   };
 
+  // Find any active donation currently accepted by an NGO (en-route or preparing pickup)
+  const activeAcceptedDonation = donations.find((d) => d.status === 'ACCEPTED');
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
@@ -55,6 +59,16 @@ export const DonorDashboardPage: React.FC = () => {
           </Button>
         </Link>
       </div>
+
+      {/* ACTIVE NGO PICKUP TRACKING CARD (Shown on Donor Dashboard when an NGO has accepted a donation) */}
+      {activeAcceptedDonation && (
+        <div className="space-y-2">
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-teal-600" /> Active Incoming NGO Rescue
+          </h2>
+          <DonorTrackingCard donation={activeAcceptedDonation} />
+        </div>
+      )}
 
       {/* METRIC CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

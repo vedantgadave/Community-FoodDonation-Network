@@ -96,5 +96,31 @@ service cloud.firestore {
       // Only admin can delete donations
       allow delete: if isAdmin();
     }
+
+    // Real-Time Pickup Journeys Collection
+    match /journeys/{donationId} {
+      // Only authorized participants (the assigned receiver, the donation donor, or admin) can read live journey location
+      allow read: if isAuthenticated() && isNotBlocked() && (
+        resource.data.receiverId == request.auth.uid ||
+        resource.data.donorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Only the assigned NGO can publish / create a journey
+      allow create: if isAuthenticated() && isNotBlocked() && hasRole('NGO') &&
+        request.resource.data.receiverId == request.auth.uid;
+
+      // Only the assigned receiver or admin can update GPS coordinates & route progress
+      allow update: if isAuthenticated() && isNotBlocked() && (
+        (resource.data.receiverId == request.auth.uid && request.resource.data.receiverId == request.auth.uid) ||
+        isAdmin()
+      );
+
+      // Delete journey when finished or cancelled (assigned receiver or admin)
+      allow delete: if isAuthenticated() && isNotBlocked() && (
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+    }
   }
 }
