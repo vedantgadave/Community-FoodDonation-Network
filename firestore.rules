@@ -18,11 +18,17 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return isNotBlocked() && getUserData().role == role;
+      return isNotBlocked() && (
+        (role == 'ADMIN' && request.auth.token.email != null && (request.auth.token.email == 'admin@gmail.com' || request.auth.token.email == 'admin@communityfood.org')) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == role)
+      );
     }
 
     function isAdmin() {
-      return isNotBlocked() && getUserData().role == 'ADMIN';
+      return isNotBlocked() && (
+        (request.auth.token.email != null && (request.auth.token.email == 'admin@gmail.com' || request.auth.token.email == 'admin@communityfood.org')) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'ADMIN')
+      );
     }
 
     // Users Collection
@@ -35,7 +41,10 @@ service cloud.firestore {
       
       // Allow users to update their own non-sensitive profile info, or admin full control
       allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isBlocked'])) ||
+        (request.auth.uid == userId && (
+          (request.auth.token.email != null && (request.auth.token.email == 'admin@gmail.com' || request.auth.token.email == 'admin@communityfood.org')) ||
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isBlocked'])
+        )) ||
         isAdmin()
       );
       

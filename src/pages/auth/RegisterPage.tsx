@@ -63,9 +63,10 @@ export const RegisterPage: React.FC = () => {
         location
       );
 
-      showToast(`Account created successfully as ${role}!`, 'success');
+      showToast(`Account created successfully as ${profile.role}!`, 'success');
 
-      if (profile.role === 'DONOR') navigate('/donor/dashboard');
+      if (profile.role === 'ADMIN') navigate('/admin/dashboard');
+      else if (profile.role === 'DONOR') navigate('/donor/dashboard');
       else if (profile.role === 'NGO') navigate('/ngo/dashboard');
       else navigate('/');
     } catch (err: any) {

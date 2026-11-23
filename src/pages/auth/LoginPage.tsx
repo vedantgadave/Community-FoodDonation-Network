@@ -33,6 +33,10 @@ export const LoginPage: React.FC = () => {
       showToast(`Welcome back, ${profile.name}!`, 'success');
 
       const from = (location.state as any)?.from?.pathname;
+      if (profile.role === 'ADMIN') {
+        navigate(from && from.startsWith('/admin') ? from : '/admin/dashboard', { replace: true });
+        return;
+      }
       if (from) {
         navigate(from, { replace: true });
         return;
@@ -40,7 +44,6 @@ export const LoginPage: React.FC = () => {
 
       if (profile.role === 'DONOR') navigate('/donor/dashboard');
       else if (profile.role === 'NGO') navigate('/ngo/dashboard');
-      else if (profile.role === 'ADMIN') navigate('/admin/dashboard');
       else navigate('/');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check credentials.');
@@ -94,7 +97,7 @@ export const LoginPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickDemoLogin('admin@communityfood.org')}
+                onClick={() => handleQuickDemoLogin('admin@gmail.com')}
                 className="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-amber-300 dark:border-amber-700 font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100"
               >
                 Admin Demo

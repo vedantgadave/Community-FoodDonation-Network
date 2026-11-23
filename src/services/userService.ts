@@ -37,7 +37,7 @@ const INITIAL_MOCK_USERS: Record<string, UserProfile> = {
   'admin_1': {
     uid: 'admin_1',
     name: 'Admin Supervisor',
-    email: 'admin@communityfood.org',
+    email: 'admin@gmail.com',
     phone: '+1 (555) 000-1122',
     role: 'ADMIN',
     authorizedRoles: ['ADMIN'],
@@ -55,15 +55,24 @@ let inMemoryUsers: Record<string, UserProfile> | null = null;
 function getLocalUsers(): Record<string, UserProfile> {
   if (typeof localStorage !== 'undefined') {
     const data = localStorage.getItem(MOCK_USERS_KEY);
+    let users: Record<string, UserProfile>;
     if (!data) {
-      localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(INITIAL_MOCK_USERS));
-      return { ...INITIAL_MOCK_USERS };
+      users = { ...INITIAL_MOCK_USERS };
+      localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(users));
+      return users;
     }
     try {
-      return JSON.parse(data);
+      users = JSON.parse(data);
     } catch {
-      return { ...INITIAL_MOCK_USERS };
+      users = { ...INITIAL_MOCK_USERS };
     }
+    // Ensure admin_1 has admin@gmail.com and ADMIN role
+    if (users['admin_1']) {
+      users['admin_1'].email = 'admin@gmail.com';
+      users['admin_1'].role = 'ADMIN';
+      users['admin_1'].authorizedRoles = ['ADMIN'];
+    }
+    return users;
   } else {
     if (!inMemoryUsers) {
       inMemoryUsers = { ...INITIAL_MOCK_USERS };

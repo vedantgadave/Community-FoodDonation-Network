@@ -9,6 +9,7 @@ import {
 import { auth, isDemoMode } from '../services/firebase';
 import { getUserProfile, createUserProfile, updateUserProfile } from '../services/userService';
 import type { UserProfile, UserRole } from '../types';
+import { isAdminEmail } from '../constants';
 
 const DEMO_CURRENT_USER_KEY = 'cfdn_demo_current_uid';
 const ACTIVE_ROLE_OVERRIDE_KEY = 'cfdn_active_role_override';
@@ -47,8 +48,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(fbUser);
         if (fbUser) {
           try {
-            const profile = await getUserProfile(fbUser.uid);
-            if (profile) {
+            const isAdmin = isAdminEmail(fbUser.email);
+            let profile = await getUserProfile(fbUser.uid);
+            
+            if (isAdmin) {
+              if (!profile) {
+                const now = new Date().toISOString();
+                profile = {
+                  uid: fbUser.uid,
+                  name: fbUser.displayName || 'System Admin',
+                  email: fbUser.email || 'admin@gmail.com',
+                  phone: fbUser.phoneNumber || '+1 (555) 000-1122',
+                  role: 'ADMIN',
+                  authorizedRoles: ['ADMIN'],
+                  ngoVerificationStatus: 'VERIFIED',
+                  organizationName: 'Food Donation Network HQ',
+                  location: 'Global Operations Center',
+                  isBlocked: false,
+                  createdAt: now,
+                  updatedAt: now,
+                };
+                await createUserProfile(profile);
+              } else if (profile.role !== 'ADMIN' || !profile.authorizedRoles?.includes('ADMIN')) {
+                profile.role = 'ADMIN';
+                profile.authorizedRoles = ['ADMIN'];
+                try {
+                  await updateUserProfile(profile.uid, {
+                    role: 'ADMIN',
+                    authorizedRoles: ['ADMIN'],
+                  });
+                } catch (err) {
+                  console.warn('Could not sync admin role to database:', err);
+                }
+              }
+            } else if (profile) {
               // Check if user previously switched to an authorized role in this browser
               const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${fbUser.uid}`) as UserRole | null;
               if (
@@ -75,13 +108,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const savedUid = localStorage.getItem(DEMO_CURRENT_USER_KEY) || 'donor_1';
       getUserProfile(savedUid).then((profile) => {
         if (profile) {
-          const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
-          if (
-            storedRole &&
-            storedRole !== 'ADMIN' &&
-            profile.authorizedRoles?.includes(storedRole)
-          ) {
-            profile.role = storedRole;
+          const isAdmin = isAdminEmail(profile.email);
+          if (isAdmin) {
+            profile.role = 'ADMIN';
+            profile.authorizedRoles = ['ADMIN'];
+          } else {
+            const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
+            if (
+              storedRole &&
+              storedRole !== 'ADMIN' &&
+              profile.authorizedRoles?.includes(storedRole)
+            ) {
+              profile.role = storedRole;
+            }
           }
         }
         setUserProfile(profile);
@@ -95,23 +134,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (!isDemoMode && auth) {
         const cred = await signInWithEmailAndPassword(auth, email, password);
-        const profile = await getUserProfile(cred.user.uid);
+        const isAdmin = isAdminEmail(cred.user.email || email);
+        let profile = await getUserProfile(cred.user.uid);
+
         if (!profile) {
-          throw new Error('User profile record not found in database.');
+          if (isAdmin) {
+            const now = new Date().toISOString();
+            profile = {
+              uid: cred.user.uid,
+              name: cred.user.displayName || 'System Admin',
+              email: cred.user.email || email,
+              phone: cred.user.phoneNumber || '+1 (555) 000-1122',
+              role: 'ADMIN',
+              authorizedRoles: ['ADMIN'],
+              ngoVerificationStatus: 'VERIFIED',
+              organizationName: 'Food Donation Network HQ',
+              location: 'Global Operations Center',
+              isBlocked: false,
+              createdAt: now,
+              updatedAt: now,
+            };
+            await createUserProfile(profile);
+          } else {
+            throw new Error('User profile record not found in database.');
+          }
+        } else if (isAdmin && (profile.role !== 'ADMIN' || !profile.authorizedRoles?.includes('ADMIN'))) {
+          profile.role = 'ADMIN';
+          profile.authorizedRoles = ['ADMIN'];
+          try {
+            await updateUserProfile(profile.uid, {
+              role: 'ADMIN',
+              authorizedRoles: ['ADMIN'],
+            });
+          } catch (err) {
+            console.warn('Could not sync admin role to database:', err);
+          }
         }
+
         if (profile.isBlocked) {
           await signOut(auth);
           throw new Error('Your account has been restricted by an administrator.');
         }
         
-        // Restore role preference if authorized
-        const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
-        if (
-          storedRole &&
-          storedRole !== 'ADMIN' &&
-          profile.authorizedRoles?.includes(storedRole)
-        ) {
-          profile.role = storedRole;
+        if (!isAdmin) {
+          // Restore role preference if authorized
+          const storedRole = localStorage.getItem(`${ACTIVE_ROLE_OVERRIDE_KEY}_${profile.uid}`) as UserRole | null;
+          if (
+            storedRole &&
+            storedRole !== 'ADMIN' &&
+            profile.authorizedRoles?.includes(storedRole)
+          ) {
+            profile.role = storedRole;
+          }
+        } else {
+          profile.role = 'ADMIN';
         }
 
         setUserProfile(profile);
@@ -120,12 +196,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // DEMO MODE LOGIN
         let targetUid = 'donor_1';
         if (email.includes('ngo')) targetUid = 'ngo_1';
-        if (email.includes('admin')) targetUid = 'admin_1';
+        if (isAdminEmail(email) || email.includes('admin')) targetUid = 'admin_1';
 
         const profile = await getUserProfile(targetUid);
         if (!profile) throw new Error('Demo account profile not found');
         if (profile.isBlocked) throw new Error('Account restricted by administrator.');
         
+        if (isAdminEmail(email) || email.includes('admin')) {
+          profile.role = 'ADMIN';
+          profile.authorizedRoles = ['ADMIN'];
+        }
+
         localStorage.setItem(DEMO_CURRENT_USER_KEY, profile.uid);
         setUserProfile(profile);
         return profile;
@@ -146,9 +227,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<UserProfile> => {
     setLoading(true);
     try {
-      if (role === 'ADMIN') {
+      const isAdmin = isAdminEmail(email);
+      if (role === 'ADMIN' && !isAdmin) {
         throw new Error('Unauthorized: Admin accounts cannot be self-registered.');
       }
+      const effectiveRole: UserRole = isAdmin ? 'ADMIN' : role;
       const now = new Date().toISOString();
 
       if (!isDemoMode && auth) {
@@ -157,14 +240,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const newProfile: UserProfile = {
           uid,
-          name,
+          name: name || (isAdmin ? 'System Admin' : ''),
           email,
           phone,
-          role,
-          authorizedRoles: [role],
-          ngoVerificationStatus: role === 'NGO' ? 'PENDING' : 'NONE',
-          organizationName: organizationName || (role === 'NGO' ? name : ''),
-          location,
+          role: effectiveRole,
+          authorizedRoles: [effectiveRole],
+          ngoVerificationStatus: isAdmin ? 'VERIFIED' : (effectiveRole === 'NGO' ? 'PENDING' : 'NONE'),
+          organizationName: organizationName || (isAdmin ? 'Food Donation Network HQ' : (effectiveRole === 'NGO' ? name : '')),
+          location: location || (isAdmin ? 'Global Operations Center' : ''),
           isBlocked: false,
           createdAt: now,
           updatedAt: now,
@@ -175,17 +258,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return newProfile;
       } else {
         // DEMO MODE REGISTER
-        const uid = `${role.toLowerCase()}_${Date.now()}`;
+        const uid = `${effectiveRole.toLowerCase()}_${Date.now()}`;
         const newProfile: UserProfile = {
           uid,
-          name,
+          name: name || (isAdmin ? 'System Admin' : ''),
           email,
           phone,
-          role,
-          authorizedRoles: [role],
-          ngoVerificationStatus: role === 'NGO' ? 'PENDING' : 'NONE',
-          organizationName: organizationName || (role === 'NGO' ? name : ''),
-          location,
+          role: effectiveRole,
+          authorizedRoles: [effectiveRole],
+          ngoVerificationStatus: isAdmin ? 'VERIFIED' : (effectiveRole === 'NGO' ? 'PENDING' : 'NONE'),
+          organizationName: organizationName || (isAdmin ? 'Food Donation Network HQ' : (effectiveRole === 'NGO' ? name : '')),
+          location: location || (isAdmin ? 'Global Operations Center' : ''),
           isBlocked: false,
           createdAt: now,
           updatedAt: now,

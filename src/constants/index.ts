@@ -45,3 +45,14 @@ export const isValidStateTransition = (current: DonationStatus, next: DonationSt
   const allowed = ALLOWED_TRANSITIONS[current] || [];
   return allowed.includes(next);
 };
+
+export const ADMIN_EMAILS: readonly string[] = [
+  'admin@gmail.com',
+  'admin@communityfood.org'
+];
+
+export const isAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+
